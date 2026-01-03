@@ -39,21 +39,36 @@
 *)
 
 (** -------------------------------------------------------------------------- *)
-(** ROADMAP                                                                    *)
+(** GAPS AND FURTHER WORK                                                      *)
 (** -------------------------------------------------------------------------- *)
 
 (**
-   [x] Rescue indication (FiO2 + clinical signs)
-   [x] Combined indication predicate with witness/counterexample
-   [x] Product type (Survanta, Curosurf, Infasurf)
-   [x] Weight-based dose calculation
-   [x] Dose validity bounds with witness/counterexample
-   [x] Repeat dosing: time since last dose
-   [x] Repeat dosing: persistent FiO2 requirement
-   [x] Dose count tracking and max doses with witness/counterexample
-   [x] Safety theorem: indicated ∧ ¬contraindicated → safe_to_give
-   [x] Safety theorem: ¬indicated → withhold_appropriate
-   [x] Safety theorem: dose_in_bounds → no_overdose
+   Contraindications: Does not model when to withhold (congenital
+     diaphragmatic hernia, lethal anomalies, pulmonary hypoplasia).
+
+   CPAP-first protocols: Modern INSURE/LISA techniques use CPAP trial
+     before surfactant. This model assumes intubation pathway.
+
+   SpO2 targeting: Real decisions use SpO2 ranges (88-95%), not just FiO2.
+     FiO2 is a proxy for oxygenation failure, not the full picture.
+
+   Blood gas integration: pH < 7.20 or pCO2 > 60 may influence timing
+     independent of FiO2. Not currently modeled.
+
+   CXR confirmation: Ground-glass appearance on chest X-ray confirms RDS
+     but is not encoded in clinical_rds predicate.
+
+   Delivery room timing: Prophylactic surfactant should be given within
+     15 minutes of birth. Time constraint not enforced.
+
+   Administration technique: INSURE vs LISA vs conventional intubation
+     affects outcomes but is outside scope of indication logic.
+
+   Boundary behavior: Predicates use strict inequalities. Infants at
+     exactly 26 weeks or exactly 30% FiO2 fall on edges. Audit needed.
+
+   Extraction and validation: OCaml extraction not yet tested against
+     actual NICU case records. EXERCISED status pending.
 *)
 
 From Coq Require Import Arith Lia.
