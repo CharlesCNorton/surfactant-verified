@@ -127,7 +127,6 @@
    4.  Document false positives/negatives vs. clinician decisions
    5.  Prove formal refinement linking Coq semantics to SPIN/UPPAAL models
    6.  Validate local policy dose caps (400/600/420mg) against institutional data
-   7.  Handle edge cases where imaging contradicts clinical presentation
 
    ALTERNATIVE VALIDATION METHOD (no IRB required):
    Literature-based case extraction enables validation against published
@@ -1047,6 +1046,87 @@ Proof.
   unfold imaging_supports_rds, clinical_evidence. simpl.
   right. right. reflexivity.
 Qed.
+
+(** -------------------------------------------------------------------------- *)
+(** Imaging-Clinical Contradiction Handling                                    *)
+(** -------------------------------------------------------------------------- *)
+
+(** EDGE CASE: Imaging contradicts clinical presentation.
+
+    Scenario: Patient has clinical signs of RDS (grunting, retractions, etc.)
+    but chest X-ray is clear (no ground glass, no air bronchograms).
+
+    This can occur due to:
+    1. Early RDS before radiographic changes develop
+    2. Transient tachypnea of newborn (TTN) mimicking RDS
+    3. Other causes of respiratory distress (sepsis, cardiac)
+    4. Technical issues with imaging
+
+    Handling in this formalization:
+    - Conservative path (rescue_recommendation): requires imaging OR blood gas
+      support, so clear CXR + normal gas = NotIndicated
+    - Clinician override: clinical_judgement flag allows bypass
+    - Guideline-minimal path: does not require imaging confirmation
+
+    The conservative design intentionally blocks surfactant when imaging
+    contradicts clinical signs, requiring either blood gas confirmation
+    or explicit clinical override. This prevents unnecessary treatment
+    in cases where respiratory distress has non-RDS etiology. *)
+
+(** Clear imaging: CXR obtained but shows no RDS pattern. *)
+Definition imaging_clear (ie : ImagingEvidence) : Prop :=
+  match ie_cxr ie with
+  | Some cxr => ~ cxr_consistent_with_rds cxr
+  | None => False  (* No CXR = not "clear", just absent *)
+  end /\
+  match ie_ultrasound ie with
+  | Some us => ~ ultrasound_consistent_with_rds us
+  | None => True  (* Ultrasound optional *)
+  end /\
+  ie_clinical_judgement ie = false.
+
+(** --- Witness: Clear CXR with no override --- *)
+Definition contradicting_imaging : ImagingEvidence :=
+  mkImagingEvidence (Some clear_cxr) None false.
+
+Lemma contradicting_imaging_is_clear : imaging_clear contradicting_imaging.
+Proof.
+  unfold imaging_clear, contradicting_imaging. simpl.
+  split. { exact clear_cxr_not_rds. }
+  split. { trivial. }
+  reflexivity.
+Qed.
+
+(** Clear imaging does NOT support RDS diagnosis. *)
+Lemma clear_imaging_not_supportive : forall ie,
+  imaging_clear ie -> ~ imaging_supports_rds ie.
+Proof.
+  intros ie [Hcxr [Hus Hjudge]].
+  unfold imaging_supports_rds.
+  intros Hsup.
+  destruct Hsup as [Hsup | [Hsup | Hsup]].
+  - (* CXR case *)
+    destruct (ie_cxr ie) as [cxr|] eqn:Ecxr.
+    + apply Hcxr. exact Hsup.
+    + simpl in Hsup. exact Hsup.
+  - (* Ultrasound case *)
+    destruct (ie_ultrasound ie) as [us|] eqn:Eus.
+    + apply Hus. exact Hsup.
+    + simpl in Hsup. exact Hsup.
+  - (* Clinical judgement case *)
+    rewrite Hjudge in Hsup. discriminate.
+Qed.
+
+(** Clinical judgement override allows bypass when imaging contradicts. *)
+Definition contradiction_with_override : ImagingEvidence :=
+  mkImagingEvidence (Some clear_cxr) None true.  (* clinical_judgement = true *)
+
+Lemma override_supports_despite_clear : imaging_supports_rds contradiction_with_override.
+Proof.
+  unfold imaging_supports_rds, contradiction_with_override. simpl.
+  right. right. reflexivity.
+Qed.
+
 
 (** -------------------------------------------------------------------------- *)
 (** Delivery Room Timing                                                       *)
@@ -2195,6 +2275,45 @@ Proof.
   - unfold blood_gas_supports_surfactant, respiratory_acidosis,
            ph_critical_low, pco2_critical_high in Hgas. simpl in Hgas.
     destruct Hgas as [H | H]; apply Nat.ltb_ge in H; discriminate.
+Qed.
+
+(** --- Imaging-Clinical Contradiction Case --- *)
+(** Clinical signs present + clear imaging + normal blood gas.
+    This tests the edge case where imaging contradicts clinical presentation. *)
+Definition contradiction_case : ClinicalState :=
+  mkClinicalState
+    (mkPatient 28 0 1000 6 45)          (* 28w, FiO2 45% - elevated *)
+    (mkRDSSigns true true false false)  (* Grunting + retractions = clinical RDS *)
+    clear_contraindications
+    contradicting_imaging                (* Clear CXR, no override *)
+    (mkBloodGas 7350 40 80)             (* Normal blood gas *)
+    360                                  (* 6 hours old *)
+    (Some (mkCPAPTrialState 7 30 50))   (* Failed CPAP trial *)
+    CPAP.
+
+(** Conservative rescue pathway correctly does NOT recommend when
+    imaging contradicts clinical signs and blood gas is normal. *)
+Lemma contradiction_not_rescue : ~ rescue_recommendation contradiction_case.
+Proof.
+  unfold rescue_recommendation, contradiction_case. simpl.
+  intros [_ [_ [Hevidence _]]].
+  destruct Hevidence as [Himg | Hgas].
+  - apply (clear_imaging_not_supportive contradicting_imaging).
+    + exact contradicting_imaging_is_clear.
+    + exact Himg.
+  - unfold blood_gas_supports_surfactant, respiratory_acidosis,
+           ph_critical_low, pco2_critical_high in Hgas. simpl in Hgas.
+    destruct Hgas as [H | H]; apply Nat.ltb_ge in H; discriminate.
+Qed.
+
+(** Guideline-minimal pathway (no imaging gate) WOULD recommend. *)
+Lemma contradiction_guideline_recommends : rescue_guideline_minimal contradiction_case.
+Proof.
+  unfold rescue_guideline_minimal, contradiction_case. simpl.
+  split. { unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30. lia. }
+  split. { unfold clinical_rds, sign_count. simpl. lia. }
+  split. { exact clear_contraindications_ok. }
+  unfold cpap_trial_failed, cpap_min_pressure, fio2_threshold, fio2_threshold_30. simpl. lia.
 Qed.
 
 (** Unified recommendation: prophylactic OR rescue pathway. *)
