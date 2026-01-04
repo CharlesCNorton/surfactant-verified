@@ -1202,7 +1202,8 @@ Module SurfactantDecision.
                                     (fio2_on_cpap trial)
     end.
 
-  (** Main unified recommendation function. *)
+  (** Main unified recommendation function.
+      Returns true only if patient is valid AND indication criteria are met. *)
   Definition recommend_surfactant (cs : ClinicalState) : bool :=
     valid_patient_dec (cs_patient cs) &&
     (prophylactic_rec_dec (ga_weeks (cs_patient cs))
@@ -1213,6 +1214,42 @@ Module SurfactantDecision.
                     (cs_cxr cs)
                     (cs_contraindications cs)
                     (cs_cpap_trial cs)).
+
+  (** ---------- RUNTIME SAFETY ----------
+
+      CRITICAL: The nat -> OCaml int extraction is UNSAFE for negative values.
+      OCaml callers MUST validate inputs before calling these functions.
+
+      Required runtime checks before calling recommend_surfactant:
+      1. All integer fields must be >= 0
+      2. ga_weeks should be in [22, 42]
+      3. birth_weight should be in [200, 6000]
+      4. current_fio2 should be in [21, 100]
+
+      The valid_patient_dec check will catch out-of-range values, but
+      negative values passed as OCaml int will behave unpredictably. *)
+
+  (** Recommendation result type for explicit validation feedback. *)
+  Inductive RecommendationResult : Type :=
+    | InvalidPatient      (* Patient failed validity checks *)
+    | NotIndicated        (* Valid patient but no indication *)
+    | Indicated.          (* Valid patient with indication *)
+
+  (** Safe recommendation with explicit result type. *)
+  Definition recommend_surfactant_safe (cs : ClinicalState) : RecommendationResult :=
+    if negb (valid_patient_dec (cs_patient cs)) then
+      InvalidPatient
+    else if orb (prophylactic_rec_dec (ga_weeks (cs_patient cs))
+                                      (cs_minutes_since_birth cs)
+                                      (cs_contraindications cs))
+                (rescue_rec_dec (current_fio2 (cs_patient cs))
+                                (cs_signs cs)
+                                (cs_cxr cs)
+                                (cs_contraindications cs)
+                                (cs_cpap_trial cs)) then
+      Indicated
+    else
+      NotIndicated.
 
 End SurfactantDecision.
 
