@@ -1044,6 +1044,68 @@ Module SurfactantDecision.
   Definition acidosis_dec (ph_val : ph_scaled) (pco2_val : pco2_mmhg) : bool :=
     (ph_val <? ph_critical_low) || (pco2_critical_high <? pco2_val).
 
+  (** Decidable contraindication check. *)
+  Definition no_contraindications_dec (c : Contraindications) : bool :=
+    negb (congenital_diaphragmatic_hernia c) &&
+    negb (lethal_anomaly c) &&
+    negb (pulmonary_hypoplasia c) &&
+    negb (active_pulmonary_hemorrhage c) &&
+    negb (pneumothorax_untreated c).
+
+  (** Decidable CXR consistent with RDS. *)
+  Definition cxr_consistent_dec (cxr : ChestXRay) : bool :=
+    ground_glass_opacity cxr ||
+    (air_bronchograms cxr && low_lung_volumes cxr).
+
+  (** Decidable timing window check. *)
+  Definition within_timing_window_dec (mins : minutes_since_birth) : bool :=
+    mins <=? prophylactic_window_minutes.
+
+  (** Decidable patient validity. *)
+  Definition valid_patient_dec (p : Patient) : bool :=
+    (22 <=? ga_weeks p) && (ga_weeks p <=? 42) &&
+    (200 <=? birth_weight p) && (birth_weight p <=? 6000) &&
+    (21 <=? current_fio2 p) && (current_fio2 p <=? 100).
+
+  (** Decidable surfactant indication (original simple version). *)
+  Definition surfactant_indicated_dec (p : Patient) (signs : RDSSigns) : bool :=
+    prophylactic_eligible_dec (ga_weeks p) ||
+    (fio2_elevated_dec (current_fio2 p) && clinical_rds_dec signs).
+
+  (** Decidable prophylactic recommendation. *)
+  Definition prophylactic_rec_dec (ga : gestational_age)
+                                  (mins : minutes_since_birth)
+                                  (c : Contraindications) : bool :=
+    prophylactic_eligible_dec ga &&
+    within_timing_window_dec mins &&
+    no_contraindications_dec c.
+
+  (** Decidable rescue recommendation. *)
+  Definition rescue_rec_dec (fio2 : fio2_pct) (signs : RDSSigns)
+                            (cxr : ChestXRay) (c : Contraindications)
+                            (cpap_trial : option CPAPTrialState) : bool :=
+    fio2_elevated_dec fio2 &&
+    clinical_rds_dec signs &&
+    cxr_consistent_dec cxr &&
+    no_contraindications_dec c &&
+    match cpap_trial with
+    | None => true
+    | Some trial => cpap_failed_dec (cpap_pressure_cmh2o trial)
+                                    (fio2_on_cpap trial)
+    end.
+
+  (** Main unified recommendation function. *)
+  Definition recommend_surfactant (cs : ClinicalState) : bool :=
+    valid_patient_dec (cs_patient cs) &&
+    (prophylactic_rec_dec (ga_weeks (cs_patient cs))
+                          (cs_minutes_since_birth cs)
+                          (cs_contraindications cs) ||
+     rescue_rec_dec (current_fio2 (cs_patient cs))
+                    (cs_signs cs)
+                    (cs_cxr cs)
+                    (cs_contraindications cs)
+                    (cs_cpap_trial cs)).
+
 End SurfactantDecision.
 
 (** Extract the decision module. *)
