@@ -79,28 +79,35 @@
        suggests 40% for >26w; Canadian guidelines [7] use 50%)
    2.  Add threshold configurations per gestational age strata
    3.  Prove threshold monotonicity (higher threshold → fewer indications)
-   4.  Add timed automata model for UPPAAL cross-validation
-   5.  Add temporal assertions: "surfactant within 2h of RDS onset"
-   6.  Model time-to-response assessment intervals
-   7.  Integrate SpO2/SF ratio into decision logic (currently excluded)
-   8.  Add OI-based escalation pathway
-   9.  Add volume calculation: mg → mL (Curosurf 80, Survanta 25, Infasurf 35)
-   10. Add optional CPAP duration gate for local protocols
-   11. Consider lamellar body count as biomarker [5]
-   12. Fix integer truncation in dose calc (849g × 100mg/kg = 84mg, loses 0.9)
-   13. Add dose_in_mL extraction for nursing administration
-   14. Prove calculated dose never exceeds product vial size
-   15. Add OCaml unit test suite (currently 0 tests)
-   16. Test edge cases: weight 200g/6000g, GA 22+0/42+0
-   17. Fuzz testing: random valid ClinicalState generation
-   18. Integration test: wrap in REST API
-   19. Obtain anonymized NICU case records (n >= 50) for validation
-   20. Run recommend_surfactant_safe against historical decisions
-   21. Measure concordance rate with attending neonatologist decisions
-   22. Document false positives/negatives vs. clinician decisions
-   23. Export decision logic to Promela for SPIN model checking
-   24. Export to UPPAAL timed automata for temporal verification
-   25. Cross-validate: same test cases, same verdicts across tools
+   4.  Replace hardcoded "< 210" with prophylactic_ga_threshold_days constant
+       (currently duplicated in prophylactic_indicated, prophylactic_rec_dec,
+       prophylactic_recommendation, prophylactic_recommendation_for)
+   5.  Add timed automata model for UPPAAL cross-validation
+   6.  Add temporal assertions: "surfactant within 2h of RDS onset"
+   7.  Model time-to-response assessment intervals
+   8.  Integrate SpO2/SF ratio into decision logic (currently excluded)
+   9.  Add OI-based escalation pathway
+   10. Add volume calculation: mg → mL (Curosurf 80, Survanta 25, Infasurf 35)
+   11. Add optional CPAP duration gate for local protocols
+   12. Consider lamellar body count as biomarker [5]
+   13. Fix integer truncation in dose calc (849g × 100mg/kg = 84mg, loses 0.9)
+   14. Add dose_in_mL extraction for nursing administration
+   15. Prove calculated dose never exceeds product vial size
+   16. Add OCaml unit test suite (currently 0 tests)
+   17. Test edge cases: weight 200g/6000g, GA 22+0/42+0
+   18. Fuzz testing: random valid ClinicalState generation
+   19. Integration test: wrap in REST API
+   20. Fix extraction safety: validate_patient missing lower bounds for ga_days
+       (currently "<=? 6", should be "in_range 0 6" to reject negative ints)
+   21. Fix extraction safety: validate_patient missing age_hours check entirely
+   22. Fix extraction safety: validate_cpap_trial missing cpap_duration_minutes
+   23. Obtain anonymized NICU case records (n >= 50) for validation
+   24. Run recommend_surfactant_safe against historical decisions
+   25. Measure concordance rate with attending neonatologist decisions
+   26. Document false positives/negatives vs. clinician decisions
+   27. Export decision logic to Promela for SPIN model checking
+   28. Export to UPPAAL timed automata for temporal verification
+   29. Cross-validate: same test cases, same verdicts across tools
 *)
 
 From Coq Require Import Arith Lia.
