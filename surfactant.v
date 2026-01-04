@@ -807,6 +807,33 @@ Proof.
   unfold safe_to_give. auto.
 Qed.
 
+(** Theorem: Any contraindication blocks safe administration.
+    This is the key safety property: even if indicated, contraindications
+    must prevent administration. *)
+Theorem contraindication_blocks_administration :
+  forall p signs c dose,
+    has_contraindication c ->
+    ~ safe_to_give p signs c dose.
+Proof.
+  intros p signs c dose Hcontra.
+  unfold safe_to_give. intros [_ [_ [Hno _]]].
+  unfold has_contraindication in Hcontra.
+  unfold no_contraindications in Hno.
+  destruct Hno as [Hcdh [Hlethal [Hhypo [Hhem Hpneu]]]].
+  destruct Hcontra as [H | [H | [H | [H | H]]]];
+    rewrite H in *; discriminate.
+Qed.
+
+(** Corollary: CDH specifically blocks administration. *)
+Corollary cdh_blocks_administration :
+  forall p signs dose,
+    ~ safe_to_give p signs cdh_present dose.
+Proof.
+  intros p signs dose.
+  apply contraindication_blocks_administration.
+  exact cdh_is_contraindication.
+Qed.
+
 (** Theorem: Not indicated implies withholding is appropriate. *)
 Theorem withhold_when_not_indicated :
   forall p signs,
