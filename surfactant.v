@@ -130,8 +130,7 @@ Definition witness_rds_signs : RDSSigns :=
 
 Lemma witness_rds_signs_positive : clinical_rds witness_rds_signs.
 Proof.
-  unfold clinical_rds, sign_count, witness_rds_signs. simpl.
-  apply Nat.leb_le. reflexivity.
+  unfold clinical_rds, sign_count, witness_rds_signs. simpl. lia.
 Qed.
 
 (** --- Counterexample: Infant with 0 signs --- *)
@@ -140,8 +139,7 @@ Definition no_rds_signs : RDSSigns :=
 
 Lemma no_rds_signs_negative : ~ clinical_rds no_rds_signs.
 Proof.
-  unfold clinical_rds, sign_count, no_rds_signs. simpl.
-  apply Nat.lt_nge. apply Nat.leb_le. reflexivity.
+  unfold clinical_rds, sign_count, no_rds_signs. simpl. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -232,8 +230,7 @@ Definition failed_cpap_trial : CPAPTrialState :=
 Lemma failed_cpap_trial_indicates_surfactant : cpap_trial_failed failed_cpap_trial.
 Proof.
   unfold cpap_trial_failed, failed_cpap_trial, cpap_min_pressure,
-         cpap_fio2_failure_threshold. simpl.
-  split; apply Nat.leb_le; reflexivity.
+         cpap_fio2_failure_threshold. simpl. lia.
 Qed.
 
 (** --- Counterexample: Stable on CPAP at FiO2 30% --- *)
@@ -242,10 +239,8 @@ Definition stable_cpap_trial : CPAPTrialState :=
 
 Lemma stable_cpap_not_failed : ~ cpap_trial_failed stable_cpap_trial.
 Proof.
-  unfold cpap_trial_failed, stable_cpap_trial, cpap_fio2_failure_threshold. simpl.
-  intros [_ H].
-  apply Nat.lt_nge in H. apply H.
-  apply Nat.leb_le. reflexivity.
+  unfold cpap_trial_failed, stable_cpap_trial, cpap_fio2_failure_threshold,
+         cpap_min_pressure. simpl. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -262,15 +257,13 @@ Definition fio2_elevated (f : fio2_pct) : Prop :=
 (** --- Witness: FiO2 45% exceeds 30% threshold --- *)
 Lemma fio2_45_elevated : fio2_elevated 45.
 Proof.
-  unfold fio2_elevated, fio2_threshold.
-  apply Nat.leb_le. reflexivity.
+  unfold fio2_elevated, fio2_threshold. lia.
 Qed.
 
 (** --- Counterexample: FiO2 25% does not exceed threshold --- *)
 Lemma fio2_25_not_elevated : ~ fio2_elevated 25.
 Proof.
-  unfold fio2_elevated, fio2_threshold.
-  apply Nat.lt_nge. apply Nat.leb_le. reflexivity.
+  unfold fio2_elevated, fio2_threshold. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -306,25 +299,20 @@ Qed.
 (** --- Witness: SpO2 85% is below target --- *)
 Lemma spo2_85_below_target : spo2_below_target 85.
 Proof.
-  unfold spo2_below_target, spo2_target_low.
-  apply Nat.leb_le. reflexivity.
+  unfold spo2_below_target, spo2_target_low. lia.
 Qed.
 
 (** --- Witness: FiO2 50% with SpO2 82% = oxygenation failure --- *)
 Lemma oxygenation_failure_example : oxygenation_failure 50 82.
 Proof.
-  unfold oxygenation_failure. split.
-  - unfold fio2_elevated, fio2_threshold. apply Nat.leb_le. reflexivity.
-  - unfold spo2_below_target, spo2_target_low. apply Nat.leb_le. reflexivity.
+  unfold oxygenation_failure, fio2_elevated, fio2_threshold,
+         spo2_below_target, spo2_target_low. lia.
 Qed.
 
 (** --- Counterexample: FiO2 25% with SpO2 92% = no failure --- *)
 Lemma no_oxygenation_failure_example : ~ oxygenation_failure 25 92.
 Proof.
-  unfold oxygenation_failure. intros [Hfio2 _].
-  unfold fio2_elevated, fio2_threshold in Hfio2.
-  apply Nat.lt_nge in Hfio2. apply Hfio2.
-  apply Nat.leb_le. reflexivity.
+  unfold oxygenation_failure, fio2_elevated, fio2_threshold. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -360,8 +348,7 @@ Definition acidotic_gas : BloodGas := mkBloodGas 715 65 55.
 Lemma acidotic_gas_supports_surfactant : blood_gas_supports_surfactant acidotic_gas.
 Proof.
   unfold blood_gas_supports_surfactant, respiratory_acidosis, acidotic_gas,
-         ph_critical_low, pco2_critical_high. simpl.
-  left. apply Nat.leb_le. reflexivity.
+         ph_critical_low, pco2_critical_high. simpl. left. lia.
 Qed.
 
 (** --- Counterexample: pH 7.35, pCO2 45 → normal gas --- *)
@@ -369,10 +356,8 @@ Definition normal_gas : BloodGas := mkBloodGas 735 45 80.
 
 Lemma normal_gas_no_acidosis : ~ respiratory_acidosis normal_gas.
 Proof.
-  unfold respiratory_acidosis, normal_gas, ph_critical_low, pco2_critical_high. simpl.
-  intros [Hph | Hpco2].
-  - apply Nat.lt_nge in Hph. apply Hph. apply Nat.leb_le. reflexivity.
-  - apply Nat.lt_nge in Hpco2. apply Hpco2. apply Nat.leb_le. reflexivity.
+  unfold respiratory_acidosis, normal_gas, ph_critical_low, pco2_critical_high.
+  simpl. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -448,16 +433,14 @@ Definition prophylactic_timing_valid (mins : minutes_since_birth) : Prop :=
 Lemma timing_10min_valid : prophylactic_timing_valid 10.
 Proof.
   unfold prophylactic_timing_valid, within_prophylactic_window,
-         prophylactic_window_minutes.
-  apply Nat.leb_le. reflexivity.
+         prophylactic_window_minutes. lia.
 Qed.
 
 (** --- Counterexample: 30 minutes post-birth is outside window --- *)
 Lemma timing_30min_invalid : ~ prophylactic_timing_valid 30.
 Proof.
   unfold prophylactic_timing_valid, within_prophylactic_window,
-         prophylactic_window_minutes.
-  apply Nat.lt_nge. apply Nat.leb_le. reflexivity.
+         prophylactic_window_minutes. lia.
 Qed.
 
 (** Prophylactic administration requires both GA eligibility AND timing. *)
@@ -468,8 +451,7 @@ Definition prophylactic_complete (ga : gestational_age) (mins : minutes_since_bi
 Lemma prophylactic_complete_example : prophylactic_complete 24 5.
 Proof.
   unfold prophylactic_complete, within_prophylactic_window,
-         prophylactic_window_minutes.
-  split; apply Nat.leb_le; reflexivity.
+         prophylactic_window_minutes. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -540,15 +522,13 @@ Definition prophylactic_eligible_ga (ga : gestational_age) : Prop :=
 (** --- Witness: 25 weeks eligible for prophylactic --- *)
 Lemma ga_25_prophylactic_eligible : prophylactic_eligible_ga 25.
 Proof.
-  unfold prophylactic_eligible_ga, prophylactic_ga_threshold.
-  apply Nat.leb_le. reflexivity.
+  unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
 Qed.
 
 (** --- Counterexample: 32 weeks not eligible for prophylactic --- *)
 Lemma ga_32_not_prophylactic_eligible : ~ prophylactic_eligible_ga 32.
 Proof.
-  unfold prophylactic_eligible_ga, prophylactic_ga_threshold.
-  apply Nat.le_ngt. apply Nat.leb_le. reflexivity.
+  unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -586,8 +566,7 @@ Lemma ga_boundary_25_vs_26 :
   prophylactic_eligible_ga 25 /\ ~ prophylactic_eligible_ga 26.
 Proof.
   split.
-  - unfold prophylactic_eligible_ga, prophylactic_ga_threshold.
-    apply Nat.leb_le. reflexivity.
+  - unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
   - exact ga_26_not_prophylactic.
 Qed.
 
@@ -597,7 +576,7 @@ Lemma fio2_boundary_30_vs_31 :
 Proof.
   split.
   - exact fio2_30_not_elevated.
-  - unfold fio2_elevated, fio2_threshold. apply Nat.leb_le. reflexivity.
+  - unfold fio2_elevated, fio2_threshold. lia.
 Qed.
 
 (** --- Inclusive alternative: >= 26 weeks would include 26 --- *)
@@ -634,11 +613,8 @@ Definition rescue_signs : RDSSigns := mkRDSSigns true true false false.
 Lemma rescue_patient_indicated : surfactant_indicated rescue_patient rescue_signs.
 Proof.
   unfold surfactant_indicated. right.
-  unfold rescue_indicated. split.
-  - unfold fio2_elevated, fio2_threshold, rescue_patient. simpl.
-    apply Nat.leb_le. reflexivity.
-  - unfold clinical_rds, sign_count, rescue_signs. simpl.
-    apply Nat.leb_le. reflexivity.
+  unfold rescue_indicated, fio2_elevated, fio2_threshold, rescue_patient,
+         clinical_rds, sign_count, rescue_signs. simpl. lia.
 Qed.
 
 (** --- Counterexample: 34w infant with FiO2 21% and no signs → not indicated --- *)
@@ -647,15 +623,9 @@ Definition well_signs : RDSSigns := mkRDSSigns false false false false.
 
 Lemma well_patient_not_indicated : ~ surfactant_indicated well_patient well_signs.
 Proof.
-  unfold surfactant_indicated. intros [Hpro | Hres].
-  - unfold prophylactic_indicated, prophylactic_eligible_ga,
-      prophylactic_ga_threshold, well_patient in Hpro. simpl in Hpro.
-    apply Nat.lt_nge in Hpro. apply Hpro.
-    apply Nat.leb_le. reflexivity.
-  - unfold rescue_indicated in Hres. destruct Hres as [Hfio2 _].
-    unfold fio2_elevated, fio2_threshold, well_patient in Hfio2. simpl in Hfio2.
-    apply Nat.lt_nge in Hfio2. apply Hfio2.
-    apply Nat.leb_le. reflexivity.
+  unfold surfactant_indicated, prophylactic_indicated, prophylactic_eligible_ga,
+         prophylactic_ga_threshold, rescue_indicated, fio2_elevated, fio2_threshold,
+         well_patient. simpl. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -725,17 +695,13 @@ Definition dose_valid (dose : nat) : Prop :=
 (** --- Witness: 160mg is valid --- *)
 Lemma dose_160_valid : dose_valid 160.
 Proof.
-  unfold dose_valid. split.
-  - apply Nat.leb_le. reflexivity.
-  - apply Nat.leb_le. reflexivity.
+  unfold dose_valid. lia.
 Qed.
 
 (** --- Counterexample: 800mg exceeds max --- *)
 Lemma dose_800_invalid : ~ dose_valid 800.
 Proof.
-  unfold dose_valid. intros [_ H].
-  assert (Hfalse: 800 <=? 600 = false) by reflexivity.
-  apply Nat.leb_le in H. rewrite H in Hfalse. discriminate.
+  unfold dose_valid. lia.
 Qed.
 
 (** Product-specific maximum single doses per package insert.
@@ -808,8 +774,8 @@ Definition eligible_repeat_state : DosingState := mkDosingState Survanta 1 8.
 
 Lemma eligible_repeat_state_ok : repeat_eligible eligible_repeat_state 40.
 Proof.
-  unfold repeat_eligible, eligible_repeat_state. simpl.
-  repeat split; apply Nat.leb_le; reflexivity.
+  unfold repeat_eligible, eligible_repeat_state, min_hours_between_doses,
+         fio2_elevated, fio2_threshold. simpl. lia.
 Qed.
 
 (** --- Counterexample: 5th dose of Survanta (max 4) → not eligible --- *)
@@ -817,10 +783,7 @@ Definition max_doses_exceeded : DosingState := mkDosingState Survanta 4 12.
 
 Lemma max_doses_exceeded_ineligible : ~ repeat_eligible max_doses_exceeded 40.
 Proof.
-  unfold repeat_eligible, max_doses_exceeded. simpl.
-  intros [Hdoses _].
-  apply Nat.lt_nge in Hdoses. apply Hdoses.
-  apply Nat.leb_le. reflexivity.
+  unfold repeat_eligible, max_doses_exceeded. simpl. lia.
 Qed.
 
 (** --- Counterexample: Too soon (3 hours, need 6) → not eligible --- *)
@@ -828,10 +791,7 @@ Definition too_soon_state : DosingState := mkDosingState Survanta 1 3.
 
 Lemma too_soon_ineligible : ~ repeat_eligible too_soon_state 40.
 Proof.
-  unfold repeat_eligible, too_soon_state, min_hours_between_doses. simpl.
-  intros [_ [Hhours _]].
-  apply Nat.le_ngt in Hhours. apply Hhours.
-  apply Nat.leb_le. reflexivity.
+  unfold repeat_eligible, too_soon_state, min_hours_between_doses. simpl. lia.
 Qed.
 
 (** Safe repeat dosing requires all eligibility criteria. *)
@@ -935,11 +895,9 @@ Proof.
   - unfold valid_patient. simpl.
     repeat split; apply Nat.leb_le; reflexivity.
   - left. unfold prophylactic_recommendation. simpl. split.
-    + unfold prophylactic_eligible_ga, prophylactic_ga_threshold.
-      apply Nat.leb_le. reflexivity.
+    + unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
     + split.
-      * unfold within_prophylactic_window, prophylactic_window_minutes.
-        apply Nat.leb_le. reflexivity.
+      * unfold within_prophylactic_window, prophylactic_window_minutes. lia.
       * exact clear_contraindications_ok.
 Qed.
 
@@ -961,9 +919,9 @@ Proof.
   - unfold valid_patient. simpl.
     repeat split; apply Nat.leb_le; reflexivity.
   - right. unfold rescue_recommendation. simpl. split.
-    + unfold fio2_elevated, fio2_threshold. apply Nat.leb_le. reflexivity.
+    + unfold fio2_elevated, fio2_threshold. lia.
     + split.
-      * unfold clinical_rds, sign_count. simpl. apply Nat.leb_le. reflexivity.
+      * unfold clinical_rds, sign_count. simpl. lia.
       * split.
         { unfold cxr_consistent_with_rds, classic_rds_cxr. simpl. left. reflexivity. }
         { split.
