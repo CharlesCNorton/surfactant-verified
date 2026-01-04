@@ -823,6 +823,61 @@ Proof.
   apply Nat.leb_le. reflexivity.
 Qed.
 
+(** --- Counterexample: Too soon (3 hours, need 6) → not eligible --- *)
+Definition too_soon_state : DosingState := mkDosingState Survanta 1 3.
+
+Lemma too_soon_ineligible : ~ repeat_eligible too_soon_state 40.
+Proof.
+  unfold repeat_eligible, too_soon_state, min_hours_between_doses. simpl.
+  intros [_ [Hhours _]].
+  apply Nat.le_ngt in Hhours. apply Hhours.
+  apply Nat.leb_le. reflexivity.
+Qed.
+
+(** Safe repeat dosing requires all eligibility criteria. *)
+Definition safe_repeat_dose (ds : DosingState) (fio2 : fio2_pct)
+                            (c : Contraindications) (dose : nat) : Prop :=
+  repeat_eligible ds fio2 /\
+  no_contraindications c /\
+  dose_valid dose.
+
+(** Theorem: Repeat dose is safe only when timing constraint met. *)
+Theorem repeat_safe_requires_timing :
+  forall ds fio2 c dose,
+    hours_since_last ds < min_hours_between_doses ->
+    ~ safe_repeat_dose ds fio2 c dose.
+Proof.
+  intros ds fio2 c dose Htoo_soon.
+  unfold safe_repeat_dose, repeat_eligible.
+  intros [[_ [Hhours _]] _].
+  unfold min_hours_between_doses in *.
+  lia.
+Qed.
+
+(** Theorem: Repeat dose is safe only when under max doses. *)
+Theorem repeat_safe_requires_under_max :
+  forall ds fio2 c dose,
+    doses_given ds >= max_doses (product ds) ->
+    ~ safe_repeat_dose ds fio2 c dose.
+Proof.
+  intros ds fio2 c dose Hover.
+  unfold safe_repeat_dose, repeat_eligible.
+  intros [[Hunder _] _].
+  lia.
+Qed.
+
+(** Theorem: If all repeat criteria met, repeat is safe. *)
+Theorem repeat_safe_when_eligible :
+  forall ds fio2 c dose,
+    repeat_eligible ds fio2 ->
+    no_contraindications c ->
+    dose_valid dose ->
+    safe_repeat_dose ds fio2 c dose.
+Proof.
+  intros ds fio2 c dose Helig Hcontra Hdose.
+  unfold safe_repeat_dose. auto.
+Qed.
+
 (** -------------------------------------------------------------------------- *)
 (** Integrated Clinical Decision                                               *)
 (** -------------------------------------------------------------------------- *)
