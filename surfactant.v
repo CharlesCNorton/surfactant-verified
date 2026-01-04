@@ -779,6 +779,125 @@ Proof.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
+(** Integrated Clinical Decision                                               *)
+(** -------------------------------------------------------------------------- *)
+
+(** Complete clinical state for surfactant decision. *)
+Record ClinicalState := mkClinicalState {
+  cs_patient : Patient;
+  cs_signs : RDSSigns;
+  cs_contraindications : Contraindications;
+  cs_cxr : ChestXRay;
+  cs_blood_gas : BloodGas;
+  cs_minutes_since_birth : minutes_since_birth;
+  cs_cpap_trial : option CPAPTrialState;
+  cs_current_support : RespiratorySupport
+}.
+
+(** Prophylactic pathway: GA < 26w, within timing window, no contraindications. *)
+Definition prophylactic_recommendation (cs : ClinicalState) : Prop :=
+  prophylactic_eligible_ga (ga_weeks (cs_patient cs)) /\
+  within_prophylactic_window (cs_minutes_since_birth cs) /\
+  no_contraindications (cs_contraindications cs).
+
+(** Rescue pathway: FiO2 elevated, clinical signs, CXR consistent,
+    no contraindications, and either no CPAP trial or CPAP failed. *)
+Definition rescue_recommendation (cs : ClinicalState) : Prop :=
+  fio2_elevated (current_fio2 (cs_patient cs)) /\
+  clinical_rds (cs_signs cs) /\
+  cxr_consistent_with_rds (cs_cxr cs) /\
+  no_contraindications (cs_contraindications cs) /\
+  match cs_cpap_trial cs with
+  | None => True  (* No CPAP trial required if already intubated *)
+  | Some trial => cpap_trial_failed trial
+  end.
+
+(** Unified recommendation: prophylactic OR rescue pathway. *)
+Definition surfactant_recommendation (cs : ClinicalState) : Prop :=
+  valid_patient (cs_patient cs) /\
+  (prophylactic_recommendation cs \/ rescue_recommendation cs).
+
+(** --- Witness: Complete prophylactic case --- *)
+Definition prophylactic_case : ClinicalState :=
+  mkClinicalState
+    (mkPatient 24 650 0 21)           (* 24w, 650g, just born, room air *)
+    (mkRDSSigns false false false false) (* No signs yet *)
+    clear_contraindications
+    (mkChestXRay false false false false) (* No CXR yet *)
+    (mkBloodGas 735 40 70)            (* Normal gas *)
+    5                                  (* 5 minutes old *)
+    None                               (* No CPAP trial *)
+    RoomAir.
+
+Lemma prophylactic_case_recommended : surfactant_recommendation prophylactic_case.
+Proof.
+  unfold surfactant_recommendation, prophylactic_case. split.
+  - unfold valid_patient. simpl.
+    repeat split; apply Nat.leb_le; reflexivity.
+  - left. unfold prophylactic_recommendation. simpl. split.
+    + unfold prophylactic_eligible_ga, prophylactic_ga_threshold.
+      apply Nat.leb_le. reflexivity.
+    + split.
+      * unfold within_prophylactic_window, prophylactic_window_minutes.
+        apply Nat.leb_le. reflexivity.
+      * exact clear_contraindications_ok.
+Qed.
+
+(** --- Witness: Complete rescue case --- *)
+Definition rescue_case : ClinicalState :=
+  mkClinicalState
+    (mkPatient 28 1100 6 50)          (* 28w, 1100g, 6h old, FiO2 50% *)
+    (mkRDSSigns true true true false) (* Grunting, retractions, flaring *)
+    clear_contraindications
+    classic_rds_cxr                    (* Ground-glass on CXR *)
+    (mkBloodGas 725 55 50)            (* Mild acidosis *)
+    360                                (* 6 hours = 360 minutes *)
+    (Some failed_cpap_trial)          (* CPAP trial failed *)
+    CPAP.
+
+Lemma rescue_case_recommended : surfactant_recommendation rescue_case.
+Proof.
+  unfold surfactant_recommendation, rescue_case. split.
+  - unfold valid_patient. simpl.
+    repeat split; apply Nat.leb_le; reflexivity.
+  - right. unfold rescue_recommendation. simpl. split.
+    + unfold fio2_elevated, fio2_threshold. apply Nat.leb_le. reflexivity.
+    + split.
+      * unfold clinical_rds, sign_count. simpl. apply Nat.leb_le. reflexivity.
+      * split.
+        { unfold cxr_consistent_with_rds, classic_rds_cxr. simpl. left. reflexivity. }
+        { split.
+          - exact clear_contraindications_ok.
+          - exact failed_cpap_trial_indicates_surfactant. }
+Qed.
+
+(** --- Counterexample: Contraindication blocks despite indication --- *)
+Definition contraindicated_case : ClinicalState :=
+  mkClinicalState
+    (mkPatient 24 650 0 21)
+    (mkRDSSigns false false false false)
+    cdh_present                        (* CDH present! *)
+    (mkChestXRay false false false false)
+    (mkBloodGas 735 40 70)
+    5
+    None
+    RoomAir.
+
+Lemma contraindicated_case_not_recommended : ~ surfactant_recommendation contraindicated_case.
+Proof.
+  unfold surfactant_recommendation, contraindicated_case.
+  intros [_ [Hpro | Hres]].
+  - unfold prophylactic_recommendation in Hpro. simpl in Hpro.
+    destruct Hpro as [_ [_ Hno]].
+    apply cdh_not_clear. exact Hno.
+  - unfold rescue_recommendation in Hres. simpl in Hres.
+    destruct Hres as [Hfio2 _].
+    unfold fio2_elevated, fio2_threshold in Hfio2.
+    apply Nat.lt_nge in Hfio2. apply Hfio2.
+    apply Nat.leb_le. reflexivity.
+Qed.
+
+(** -------------------------------------------------------------------------- *)
 (** Safety Theorems                                                            *)
 (** -------------------------------------------------------------------------- *)
 
