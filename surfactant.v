@@ -81,10 +81,8 @@
    4.  Run recommend_surfactant_safe against historical decisions
    5.  Measure concordance rate with attending neonatologist decisions
    6.  Document false positives/negatives vs. clinician decisions
-   7.  Fuzz testing: random valid ClinicalState generation
-   8.  Add OCaml unit test suite
-   9.  Cross-validate: same test cases, same verdicts across tools
-   10. Integration test: wrap in REST API
+   7.  Cross-validate: same test cases, same verdicts across tools
+   8.  Integration test: wrap in REST API
 *)
 
 From Coq Require Import Arith Lia List.
