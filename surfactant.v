@@ -47,6 +47,30 @@
      actual NICU case records. EXERCISED status pending external validation.
 *)
 
+(** -------------------------------------------------------------------------- *)
+(** TODO                                                                        *)
+(** -------------------------------------------------------------------------- *)
+
+(**
+   1. Fix SF ratio comment: 264 approximates P/F 300 (mild ARDS), not P/F 200.
+      Rice 2007 mapping: SF ~235 ↔ P/F 200, SF ~264 ↔ P/F 300.
+
+   2. Fix OI threshold comments: neonatal ECMO threshold is typically OI > 40,
+      not > 25. Qualify as "transfer/consult" vs "ECMO initiation."
+
+   3. Document max_single_dose caps as weight-range modeling assumptions,
+      not direct label quotes. Add derivation (e.g., "Survanta 100mg/kg × 4kg").
+
+   4. Document rescue pathway as "conservative" relative to European 2022.
+      Guideline: FiO2 > 30% on CPAP ≥6 sufficient. We require imaging OR
+      blood gas OR clinical_judgement flag.
+
+   5. Add OCaml wrapper guidance for nat→int extraction safety. Options:
+      - Keep Peano nat (slow but safe)
+      - Use Z with ≥0 validation at boundary
+      - OCaml wrapper rejecting negative ints before calling extracted code
+*)
+
 From Coq Require Import Arith Lia.
 
 (** -------------------------------------------------------------------------- *)
