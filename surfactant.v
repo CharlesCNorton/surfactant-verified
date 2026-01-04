@@ -47,17 +47,6 @@
      actual NICU case records. EXERCISED status pending external validation.
 *)
 
-(** -------------------------------------------------------------------------- *)
-(** TODO                                                                        *)
-(** -------------------------------------------------------------------------- *)
-
-(**
-   1. Integrate weaning criteria: connect ready_to_wean to treatment termination.
-
-   2. SF ratio / OI integration: decide whether adjunct metrics should gate
-      decisions or remain informational only.
-*)
-
 From Coq Require Import Arith Lia.
 
 (** -------------------------------------------------------------------------- *)
@@ -449,6 +438,32 @@ Lemma oi_not_severe_example : ~ oi_indicates_severe 40 8 70.
 Proof.
   unfold oi_indicates_severe, oxygenation_index, oi_severe. simpl. lia.
 Qed.
+
+(** -------------------------------------------------------------------------- *)
+(** Adjunct Metrics Design Note                                                *)
+(** -------------------------------------------------------------------------- *)
+
+(** DESIGN DECISION: SF ratio and OI are INFORMATIONAL ONLY.
+
+    These metrics are intentionally excluded from surfactant_recommendation:
+
+    1. SF ratio (SpO2/FiO2): Research correlate of P/F ratio. Useful for
+       trending but not validated for surfactant gating in neonates.
+
+    2. Oxygenation Index: Severity metric for ECMO consideration. Indicates
+       disease severity but does not gate surfactant (which should be given
+       earlier, before OI becomes critical).
+
+    European Consensus 2022 uses FiO2 > 30% on CPAP >= 6 cmH2O as the trigger,
+    not SF ratio or OI. These adjunct metrics remain available for:
+    - Severity documentation
+    - Trend monitoring
+    - Research data collection
+    - ECMO referral decisions (OI > 25-40)
+
+    To add these to decision logic, modify rescue_recommendation to include
+    sf_impaired or oi_indicates_severe. This is NOT RECOMMENDED without
+    neonatal-specific validation studies. *)
 
 (** -------------------------------------------------------------------------- *)
 (** CXR Confirmation                                                           *)
