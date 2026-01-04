@@ -10,6 +10,7 @@ of the surfactant therapy state machine using the SPIN model checker.
 
 ## Prerequisites
 
+### SPIN
 Install SPIN: http://spinroot.com/spin/whatispin.html
 
 ```bash
@@ -19,9 +20,20 @@ sudo apt-get install spin
 # macOS (Homebrew)
 brew install spin
 
-# Windows
-# Download from http://spinroot.com/spin/Bin/
+# Windows (requires gcc for preprocessing)
+# 1. Install MinGW-w64: https://www.mingw-w64.org/downloads/
+# 2. Add to PATH: C:\mingw64\bin
+# 3. Download SPIN binary from Spin repo Bin/ folder
 ```
+
+### GCC Requirement
+SPIN requires a C preprocessor (gcc) even for syntax checking.
+On Windows, install MinGW-w64 or use WSL.
+
+### Included Files
+- `spin649.exe` - SPIN 6.4.9 binary (Windows x64)
+- `run_spin.py` - Preprocessor and verification script
+- `surfactant_pp.pml` - Preprocessed model (generated)
 
 ## Usage
 
