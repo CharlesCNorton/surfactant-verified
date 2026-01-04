@@ -762,13 +762,21 @@ Record DosingState := mkDosingState {
   hours_since_last : nat
 }.
 
-(** Minimum hours between doses. *)
-Definition min_hours_between_doses : nat := 6.
+(** Minimum hours between doses per FDA product labeling.
+    Survanta: "no more frequently than every 6 hours"
+    Curosurf: "approximately 12-hour intervals"
+    Infasurf: "every 12 hours" *)
+Definition min_hours_between_doses (prod : SurfactantProduct) : nat :=
+  match prod with
+  | Survanta => 6
+  | Curosurf => 12
+  | Infasurf => 12
+  end.
 
 (** Eligible for repeat dose: under max AND enough time passed AND still needing O2. *)
 Definition repeat_eligible (ds : DosingState) (current_fio2 : fio2_pct) : Prop :=
   doses_given ds < max_doses (product ds) /\
-  hours_since_last ds >= min_hours_between_doses /\
+  hours_since_last ds >= min_hours_between_doses (product ds) /\
   fio2_elevated current_fio2.
 
 (** --- Witness: 2nd dose of Survanta, 8 hours later, FiO2 40% → eligible --- *)
@@ -806,13 +814,12 @@ Definition safe_repeat_dose (ds : DosingState) (fio2 : fio2_pct)
 (** Theorem: Repeat dose is safe only when timing constraint met. *)
 Theorem repeat_safe_requires_timing :
   forall ds fio2 c dose,
-    hours_since_last ds < min_hours_between_doses ->
+    hours_since_last ds < min_hours_between_doses (product ds) ->
     ~ safe_repeat_dose ds fio2 c dose.
 Proof.
   intros ds fio2 c dose Htoo_soon.
   unfold safe_repeat_dose, repeat_eligible.
   intros [[_ [Hhours _]] _].
-  unfold min_hours_between_doses in *.
   lia.
 Qed.
 
