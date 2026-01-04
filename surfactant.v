@@ -52,17 +52,13 @@
 (** -------------------------------------------------------------------------- *)
 
 (**
-   [DONE] 1. SF ratio: 264 ≈ P/F 300 (mild ARDS). See sf_threshold comment.
+   1. Link assess_response to repeat_eligible: prove non-responder at adequate
+      interval satisfies timing precondition for repeat dose.
 
-   [DONE] 2. OI thresholds: ECMO > 40, transfer > 25. See oxygenation_index comment.
+   2. Integrate weaning criteria: connect ready_to_wean to treatment termination.
 
-   [DONE] 3. max_single_dose: documented as weight-range modeling assumptions.
-
-   [DONE] 4. rescue_recommendation: proved conservative vs guideline-minimal.
-             See conservative_implies_guideline, conservative_rejects_case.
-
-   [DONE] 5. OCaml extraction safety: validate_clinical_state checks all fields,
-             recommend_surfactant_safe returns InvalidInput on range errors.
+   3. SF ratio / OI integration: decide whether adjunct metrics should gate
+      decisions or remain informational only.
 *)
 
 From Coq Require Import Arith Lia.
