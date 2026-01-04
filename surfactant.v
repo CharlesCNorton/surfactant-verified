@@ -1224,6 +1224,60 @@ Proof.
   unfold ready_to_wean. intros [_ [_ [_ Hwob]]]. discriminate.
 Qed.
 
+(** Ready to wean implies FiO2 not elevated (weaning threshold < FiO2 threshold). *)
+Theorem wean_implies_fio2_not_elevated :
+  forall fio2 spo2 wob,
+    ready_to_wean fio2 spo2 wob -> ~ fio2_elevated fio2.
+Proof.
+  intros fio2 spo2 wob [Hfio2 _].
+  unfold fio2_elevated, fio2_threshold, weaning_fio2_threshold in *. lia.
+Qed.
+
+(** Ready to wean implies no repeat dose eligible. *)
+Theorem wean_implies_no_repeat :
+  forall ds fio2 spo2 wob,
+    ready_to_wean fio2 spo2 wob -> ~ repeat_eligible ds fio2.
+Proof.
+  intros ds fio2 spo2 wob Hwean.
+  apply responder_no_repeat.
+  apply wean_implies_fio2_not_elevated with spo2 wob. exact Hwean.
+Qed.
+
+(** Ready to wean implies surfactant treatment complete. *)
+Inductive TreatmentStatus : Type :=
+  | NeedsSurfactant
+  | AwaitingResponse
+  | ReadyToWean
+  | RequiresEscalation.
+
+(** Determine treatment status based on current state. *)
+Definition treatment_status (fio2 : fio2_pct) (spo2 : spo2_pct)
+                            (wob : bool) (resp : SurfactantResponse) : TreatmentStatus :=
+  if andb (fio2 <=? weaning_fio2_threshold)
+          (andb (weaning_spo2_low <=? spo2) (andb (spo2 <=? weaning_spo2_high) (negb wob)))
+  then ReadyToWean
+  else match resp with
+       | Responded => AwaitingResponse  (* Still elevated but improving *)
+       | PartialResponse => AwaitingResponse
+       | NonResponder => RequiresEscalation
+       end.
+
+(** Ready to wean yields ReadyToWean status. *)
+Lemma ready_to_wean_status :
+  forall fio2 spo2 wob resp,
+    ready_to_wean fio2 spo2 wob ->
+    treatment_status fio2 spo2 wob resp = ReadyToWean.
+Proof.
+  intros fio2 spo2 wob resp Hwean.
+  unfold ready_to_wean, weaning_fio2_threshold, weaning_spo2_low, weaning_spo2_high in Hwean.
+  destruct Hwean as [Hfio2 [Hspo2_lo [Hspo2_hi Hwob]]].
+  unfold treatment_status, weaning_fio2_threshold, weaning_spo2_low, weaning_spo2_high.
+  replace (fio2 <=? 25) with true by (symmetry; apply Nat.leb_le; lia).
+  replace (90 <=? spo2) with true by (symmetry; apply Nat.leb_le; lia).
+  replace (spo2 <=? 94) with true by (symmetry; apply Nat.leb_le; lia).
+  rewrite Hwob. reflexivity.
+Qed.
+
 (** -------------------------------------------------------------------------- *)
 (** Integrated Clinical Decision (PRIMARY DECISION PREDICATE)                  *)
 (** -------------------------------------------------------------------------- *)
