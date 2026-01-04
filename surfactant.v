@@ -127,8 +127,7 @@
    4.  Document false positives/negatives vs. clinician decisions
    5.  Prove formal refinement linking Coq semantics to SPIN/UPPAAL models
    6.  Validate local policy dose caps (400/600/420mg) against institutional data
-   7.  Add formal verification for server.py and HTTP API pathway
-   8.  Handle edge cases where imaging contradicts clinical presentation
+   7.  Handle edge cases where imaging contradicts clinical presentation
 
    ALTERNATIVE VALIDATION METHOD (no IRB required):
    Literature-based case extraction enables validation against published
