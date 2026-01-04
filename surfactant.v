@@ -75,22 +75,20 @@
    TARGET: EXERCISED (requires external validation)
 
    TODO:
-   1.  Add timed automata model for UPPAAL cross-validation
-   2.  Add temporal assertions: "surfactant within 2h of RDS onset"
-   3.  Model time-to-response assessment intervals
-   4.  Export decision logic to Promela for SPIN model checking
-   5.  Export to UPPAAL timed automata for temporal verification
-   6.  Obtain anonymized NICU case records (n >= 50) for validation
-   7.  Run recommend_surfactant_safe against historical decisions
-   8.  Measure concordance rate with attending neonatologist decisions
-   9.  Document false positives/negatives vs. clinician decisions
-   10. Fuzz testing: random valid ClinicalState generation
-   11. Add OCaml unit test suite
-   12. Cross-validate: same test cases, same verdicts across tools
-   13. Integration test: wrap in REST API
+   1.  Export decision logic to Promela for SPIN model checking
+   2.  Export to UPPAAL timed automata for temporal verification
+   3.  Obtain anonymized NICU case records (n >= 50) for validation
+   4.  Run recommend_surfactant_safe against historical decisions
+   5.  Measure concordance rate with attending neonatologist decisions
+   6.  Document false positives/negatives vs. clinician decisions
+   7.  Fuzz testing: random valid ClinicalState generation
+   8.  Add OCaml unit test suite
+   9.  Cross-validate: same test cases, same verdicts across tools
+   10. Integration test: wrap in REST API
 *)
 
-From Coq Require Import Arith Lia.
+From Coq Require Import Arith Lia List.
+Import ListNotations.
 
 (** -------------------------------------------------------------------------- *)
 (** Patient Record                                                             *)
@@ -1614,6 +1612,156 @@ Proof.
   intros ds fio2_post Hnot_elevated.
   unfold repeat_eligible. intros [_ [_ Hfio2]].
   contradiction.
+Qed.
+
+(** -------------------------------------------------------------------------- *)
+(** Timed Automata Model (UPPAAL)                                              *)
+(** -------------------------------------------------------------------------- *)
+
+(** Timed automata locations for surfactant therapy state machine.
+    Models the lifecycle from RDS diagnosis through treatment and response. *)
+Inductive TALocation : Type :=
+  | TA_Initial           (* Pre-diagnosis state *)
+  | TA_RDS_Diagnosed     (* RDS diagnosed, clock starts *)
+  | TA_Evaluating        (* Evaluating for surfactant *)
+  | TA_Surfactant_Given  (* Surfactant administered *)
+  | TA_Monitoring        (* Post-dose monitoring *)
+  | TA_Responded         (* Good response, weaning *)
+  | TA_NonResponder      (* Poor response, consider repeat *)
+  | TA_Weaned.           (* Successfully weaned *)
+
+(** Timed automata transitions with timing constraints.
+    minutes_elapsed: time since entering current state *)
+Record TATransition := mkTATransition {
+  ta_from : TALocation;
+  ta_to : TALocation;
+  ta_guard_min : nat;    (* Minimum time in minutes *)
+  ta_guard_max : nat     (* Maximum time in minutes, 0 = no max *)
+}.
+
+(** Key timing constraints for surfactant therapy. *)
+Definition surfactant_window_max : nat := 120.    (* 2 hours from RDS onset *)
+Definition response_eval_min : nat := 120.        (* 2 hours post-dose minimum *)
+Definition response_eval_max : nat := 360.        (* 6 hours post-dose maximum *)
+Definition repeat_interval_min : nat := 360.      (* 6 hours between doses *)
+
+(** Valid timed automata transitions. *)
+Definition valid_ta_transitions : list TATransition :=
+  [ mkTATransition TA_Initial TA_RDS_Diagnosed 0 0
+  ; mkTATransition TA_RDS_Diagnosed TA_Evaluating 0 surfactant_window_max
+  ; mkTATransition TA_Evaluating TA_Surfactant_Given 0 surfactant_window_max
+  ; mkTATransition TA_Surfactant_Given TA_Monitoring 0 0
+  ; mkTATransition TA_Monitoring TA_Responded response_eval_min response_eval_max
+  ; mkTATransition TA_Monitoring TA_NonResponder response_eval_min response_eval_max
+  ; mkTATransition TA_NonResponder TA_Surfactant_Given repeat_interval_min 0
+  ; mkTATransition TA_Responded TA_Weaned 0 0
+  ].
+
+(** -------------------------------------------------------------------------- *)
+(** Temporal Assertions                                                        *)
+(** -------------------------------------------------------------------------- *)
+
+(** Temporal assertion: surfactant should be given within 2 hours of RDS onset.
+    Per European Consensus 2022: early surfactant improves outcomes. *)
+Definition surfactant_timing_ok (minutes_since_rds_onset : nat)
+                                 (surfactant_given : bool) : Prop :=
+  surfactant_given = true -> minutes_since_rds_onset <= surfactant_window_max.
+
+(** Temporal assertion: response evaluation within valid window. *)
+Definition response_eval_timing_ok (minutes_since_dose : nat) : Prop :=
+  minutes_since_dose >= response_eval_min /\ minutes_since_dose <= response_eval_max.
+
+(** Temporal assertion: repeat dose respects minimum interval. *)
+Definition repeat_timing_ok (minutes_since_last_dose : nat) : Prop :=
+  minutes_since_last_dose >= repeat_interval_min.
+
+(** --- Witness: 90 minutes is within surfactant window --- *)
+Lemma surfactant_at_90min_ok : surfactant_timing_ok 90 true.
+Proof.
+  unfold surfactant_timing_ok, surfactant_window_max. lia.
+Qed.
+
+(** --- Counterexample: 150 minutes exceeds window --- *)
+Lemma surfactant_at_150min_late : ~ surfactant_timing_ok 150 true.
+Proof.
+  unfold surfactant_timing_ok, surfactant_window_max. lia.
+Qed.
+
+(** --- Witness: 180 minutes (3 hours) is valid for response eval --- *)
+Lemma response_eval_at_180min_ok : response_eval_timing_ok 180.
+Proof.
+  unfold response_eval_timing_ok, response_eval_min, response_eval_max. lia.
+Qed.
+
+(** Early surfactant (within window) is never too late. *)
+Theorem early_surfactant_ok : forall t,
+  t <= surfactant_window_max -> surfactant_timing_ok t true.
+Proof.
+  intros t Ht. unfold surfactant_timing_ok. intros _. exact Ht.
+Qed.
+
+(** -------------------------------------------------------------------------- *)
+(** Response Assessment Intervals                                              *)
+(** -------------------------------------------------------------------------- *)
+
+(** Response assessment time points in minutes post-dose. *)
+Definition assessment_timepoint_1 : nat := 120.  (* 2 hours *)
+Definition assessment_timepoint_2 : nat := 240.  (* 4 hours *)
+Definition assessment_timepoint_3 : nat := 360.  (* 6 hours *)
+
+(** Response assessment interval classification. *)
+Inductive AssessmentInterval : Type :=
+  | TooEarly           (* < 2 hours: unreliable assessment *)
+  | FirstWindow        (* 2-4 hours: first assessment window *)
+  | SecondWindow       (* 4-6 hours: second assessment window *)
+  | Extended.          (* > 6 hours: extended monitoring *)
+
+(** Classify time post-dose into assessment interval. *)
+Definition classify_interval (minutes : nat) : AssessmentInterval :=
+  if minutes <? assessment_timepoint_1 then TooEarly
+  else if minutes <? assessment_timepoint_2 then FirstWindow
+  else if minutes <? assessment_timepoint_3 then SecondWindow
+  else Extended.
+
+(** --- Witness: 90 minutes is too early --- *)
+Lemma interval_90min : classify_interval 90 = TooEarly.
+Proof. reflexivity. Qed.
+
+(** --- Witness: 150 minutes is first window --- *)
+Lemma interval_150min : classify_interval 150 = FirstWindow.
+Proof. reflexivity. Qed.
+
+(** --- Witness: 300 minutes is second window --- *)
+Lemma interval_300min : classify_interval 300 = SecondWindow.
+Proof. reflexivity. Qed.
+
+(** --- Witness: 400 minutes is extended --- *)
+Lemma interval_400min : classify_interval 400 = Extended.
+Proof. reflexivity. Qed.
+
+(** Too early assessment is unreliable. *)
+Definition assessment_reliable (minutes : nat) : Prop :=
+  classify_interval minutes <> TooEarly.
+
+(** Assessment at 2+ hours is reliable. *)
+Theorem assessment_reliable_after_2h : forall minutes,
+  minutes >= assessment_timepoint_1 -> assessment_reliable minutes.
+Proof.
+  intros minutes Hmin.
+  unfold assessment_reliable, classify_interval, assessment_timepoint_1,
+         assessment_timepoint_2, assessment_timepoint_3.
+  assert (H: (minutes <? 120) = false) by (apply Nat.ltb_ge; exact Hmin).
+  rewrite H.
+  destruct (minutes <? 240); destruct (minutes <? 360); congruence.
+Qed.
+
+(** Repeat dose timing consistency: repeat interval aligns with assessment window. *)
+Theorem repeat_after_assessment : forall minutes,
+  minutes >= repeat_interval_min -> assessment_reliable minutes.
+Proof.
+  intros minutes Hmin.
+  apply assessment_reliable_after_2h.
+  unfold repeat_interval_min in Hmin. unfold assessment_timepoint_1. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
