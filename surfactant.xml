@@ -1,0 +1,333 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
+<!--
+  Surfactant Decision Logic - UPPAAL Timed Automata Model
+
+  Translated from Coq formalization (surfactant.v)
+  Verifies temporal properties of surfactant therapy state machine.
+
+  Author: Charles C. Norton
+  Date: January 2026
+
+  Usage: Open in UPPAAL (https://uppaal.org), run Verifier
+-->
+<nta>
+  <declaration>
+/****************************************************************************
+ * GLOBAL DECLARATIONS
+ ****************************************************************************/
+
+/* Timing constants (in minutes) */
+const int SURFACTANT_WINDOW_MAX = 120;    // 2 hours from RDS onset
+const int RESPONSE_EVAL_MIN = 120;         // 2 hours post-dose minimum
+const int RESPONSE_EVAL_MAX = 360;         // 6 hours post-dose maximum
+const int REPEAT_INTERVAL_MIN = 360;       // 6 hours between doses
+const int MAX_DOSES = 4;                   // Maximum surfactant doses
+
+/* Clinical thresholds */
+const int FIO2_THRESHOLD = 30;             // FiO2 &gt; 30% triggers rescue
+const int GA_PROPHYLACTIC_DAYS = 210;      // GA &lt; 30 weeks = 210 days
+const int CPAP_MIN_PRESSURE = 6;           // Minimum CPAP for rescue
+
+/* Clocks */
+clock time_since_rds;          // Time since RDS diagnosis
+clock time_since_dose;         // Time since last surfactant dose
+
+/* Patient state (parameterized) */
+int ga_total_days = 196;       // Default: 28 weeks (28*7 = 196 days)
+int fio2 = 45;                 // Current FiO2 percentage
+bool intubated = true;         // Currently intubated
+bool has_rds_signs = true;     // &gt;= 2 clinical signs
+bool has_contraindication = false;
+
+/* Treatment state */
+int doses_given = 0;
+bool surfactant_given = false;
+
+/* Computed indication */
+bool prophylactic_indicated() { return ga_total_days &lt; GA_PROPHYLACTIC_DAYS; }
+bool rescue_indicated() { return fio2 &gt; FIO2_THRESHOLD &amp;&amp; has_rds_signs; }
+bool surfactant_indicated() {
+    return !has_contraindication &amp;&amp; (prophylactic_indicated() || rescue_indicated());
+}
+
+/* Channels for synchronization */
+chan rds_detected;
+chan give_surfactant;
+chan response_good;
+chan response_poor;
+  </declaration>
+
+  <!-- Main Therapy Automaton -->
+  <template>
+    <name>SurfactantTherapy</name>
+    <declaration>
+// Local declarations if needed
+    </declaration>
+
+    <!-- Locations (States) -->
+    <!-- TA_Initial: id=0, x=0, y=0 -->
+    <location id="id0" x="0" y="0">
+      <name x="-10" y="-34">Initial</name>
+      <label kind="comments" x="-60" y="17">Pre-diagnosis state</label>
+    </location>
+
+    <!-- TA_RDS_Diagnosed: id=1 -->
+    <location id="id1" x="170" y="0">
+      <name x="160" y="-34">RDS_Diagnosed</name>
+      <label kind="invariant" x="160" y="17">time_since_rds &lt;= SURFACTANT_WINDOW_MAX</label>
+      <label kind="comments" x="110" y="34">Clock starts, must act within window</label>
+    </location>
+
+    <!-- TA_Contraindicated: id=2 -->
+    <location id="id2" x="170" y="136">
+      <name x="160" y="153">Contraindicated</name>
+      <label kind="comments" x="110" y="170">Terminal: blocked by contraindication</label>
+    </location>
+
+    <!-- TA_Evaluating: id=3 -->
+    <location id="id3" x="340" y="0">
+      <name x="330" y="-34">Evaluating</name>
+      <label kind="invariant" x="330" y="17">time_since_rds &lt;= SURFACTANT_WINDOW_MAX</label>
+      <label kind="comments" x="280" y="34">Evaluating for surfactant</label>
+    </location>
+
+    <!-- TA_Surfactant_Given: id=4 -->
+    <location id="id4" x="510" y="0">
+      <name x="500" y="-34">Surfactant_Given</name>
+      <committed/>
+      <label kind="comments" x="450" y="17">Committed: immediately to monitoring</label>
+    </location>
+
+    <!-- TA_Monitoring: id=5 -->
+    <location id="id5" x="680" y="0">
+      <name x="670" y="-34">Monitoring</name>
+      <label kind="invariant" x="670" y="17">time_since_dose &lt;= RESPONSE_EVAL_MAX</label>
+      <label kind="comments" x="620" y="34">Post-dose monitoring</label>
+    </location>
+
+    <!-- TA_Responded: id=6 -->
+    <location id="id6" x="850" y="-68">
+      <name x="840" y="-102">Responded</name>
+      <label kind="comments" x="790" y="-51">Good response, proceed to weaning</label>
+    </location>
+
+    <!-- TA_NonResponder: id=7 -->
+    <location id="id7" x="850" y="68">
+      <name x="840" y="85">NonResponder</name>
+      <label kind="comments" x="790" y="102">Poor response, consider repeat</label>
+    </location>
+
+    <!-- TA_Weaned: id=8 -->
+    <location id="id8" x="1020" y="-68">
+      <name x="1010" y="-102">Weaned</name>
+      <label kind="comments" x="960" y="-51">Terminal: successfully weaned</label>
+    </location>
+
+    <!-- TA_WindowExpired: id=9 -->
+    <location id="id9" x="340" y="136">
+      <name x="330" y="153">WindowExpired</name>
+      <label kind="comments" x="280" y="170">Terminal: missed treatment window</label>
+    </location>
+
+    <!-- TA_MaxDoses: id=10 -->
+    <location id="id10" x="850" y="170">
+      <name x="840" y="187">MaxDoses</name>
+      <label kind="comments" x="790" y="204">Terminal: maximum doses reached</label>
+    </location>
+
+    <!-- Initial location -->
+    <init ref="id0"/>
+
+    <!-- Transitions -->
+
+    <!-- Initial -> RDS_Diagnosed: RDS detected -->
+    <transition>
+      <source ref="id0"/>
+      <target ref="id1"/>
+      <label kind="synchronisation" x="60" y="-51">rds_detected?</label>
+      <label kind="assignment" x="60" y="-34">time_since_rds = 0</label>
+    </transition>
+
+    <!-- RDS_Diagnosed -> Contraindicated: has contraindication -->
+    <transition>
+      <source ref="id1"/>
+      <target ref="id2"/>
+      <label kind="guard" x="110" y="51">has_contraindication</label>
+    </transition>
+
+    <!-- RDS_Diagnosed -> Evaluating: no contraindication -->
+    <transition>
+      <source ref="id1"/>
+      <target ref="id3"/>
+      <label kind="guard" x="220" y="-51">!has_contraindication</label>
+    </transition>
+
+    <!-- Evaluating -> Surfactant_Given: indicated, intubated, within window -->
+    <transition>
+      <source ref="id3"/>
+      <target ref="id4"/>
+      <label kind="guard" x="370" y="-85">surfactant_indicated() &amp;&amp; intubated &amp;&amp;
+time_since_rds &lt;= SURFACTANT_WINDOW_MAX</label>
+      <label kind="synchronisation" x="370" y="-51">give_surfactant!</label>
+      <label kind="assignment" x="370" y="-34">doses_given++,
+surfactant_given = true,
+time_since_dose = 0</label>
+    </transition>
+
+    <!-- Evaluating -> WindowExpired: window exceeded -->
+    <transition>
+      <source ref="id3"/>
+      <target ref="id9"/>
+      <label kind="guard" x="280" y="51">time_since_rds &gt;= SURFACTANT_WINDOW_MAX</label>
+    </transition>
+
+    <!-- Surfactant_Given -> Monitoring: immediate (committed) -->
+    <transition>
+      <source ref="id4"/>
+      <target ref="id5"/>
+    </transition>
+
+    <!-- Monitoring -> Responded: good response in valid window -->
+    <transition>
+      <source ref="id5"/>
+      <target ref="id6"/>
+      <label kind="guard" x="710" y="-85">time_since_dose &gt;= RESPONSE_EVAL_MIN &amp;&amp;
+time_since_dose &lt;= RESPONSE_EVAL_MAX</label>
+      <label kind="synchronisation" x="710" y="-51">response_good?</label>
+    </transition>
+
+    <!-- Monitoring -> NonResponder: poor response in valid window -->
+    <transition>
+      <source ref="id5"/>
+      <target ref="id7"/>
+      <label kind="guard" x="710" y="17">time_since_dose &gt;= RESPONSE_EVAL_MIN &amp;&amp;
+time_since_dose &lt;= RESPONSE_EVAL_MAX</label>
+      <label kind="synchronisation" x="710" y="51">response_poor?</label>
+    </transition>
+
+    <!-- Responded -> Weaned -->
+    <transition>
+      <source ref="id6"/>
+      <target ref="id8"/>
+    </transition>
+
+    <!-- NonResponder -> Evaluating: repeat dose (within limits) -->
+    <transition>
+      <source ref="id7"/>
+      <target ref="id3"/>
+      <label kind="guard" x="500" y="85">doses_given &lt; MAX_DOSES &amp;&amp;
+time_since_dose &gt;= REPEAT_INTERVAL_MIN &amp;&amp;
+fio2 &gt; FIO2_THRESHOLD</label>
+      <label kind="assignment" x="500" y="136">time_since_rds = 0</label>
+      <nail x="595" y="68"/>
+      <nail x="340" y="68"/>
+    </transition>
+
+    <!-- NonResponder -> MaxDoses: max reached -->
+    <transition>
+      <source ref="id7"/>
+      <target ref="id10"/>
+      <label kind="guard" x="790" y="119">doses_given &gt;= MAX_DOSES</label>
+    </transition>
+
+  </template>
+
+  <!-- Environment Process: generates events -->
+  <template>
+    <name>Environment</name>
+    <declaration>
+// Nondeterministic environment
+    </declaration>
+
+    <location id="id20" x="0" y="0">
+      <name x="-10" y="-34">Env</name>
+    </location>
+
+    <init ref="id20"/>
+
+    <!-- Can detect RDS at any time -->
+    <transition>
+      <source ref="id20"/>
+      <target ref="id20"/>
+      <label kind="synchronisation" x="34" y="-17">rds_detected!</label>
+      <nail x="51" y="-34"/>
+      <nail x="51" y="34"/>
+    </transition>
+
+    <!-- Can signal good response -->
+    <transition>
+      <source ref="id20"/>
+      <target ref="id20"/>
+      <label kind="synchronisation" x="-110" y="-17">response_good!</label>
+      <nail x="-51" y="-34"/>
+      <nail x="-51" y="34"/>
+    </transition>
+
+    <!-- Can signal poor response -->
+    <transition>
+      <source ref="id20"/>
+      <target ref="id20"/>
+      <label kind="synchronisation" x="34" y="51">response_poor!</label>
+      <nail x="51" y="51"/>
+      <nail x="51" y="85"/>
+      <nail x="-51" y="85"/>
+      <nail x="-51" y="51"/>
+    </transition>
+
+  </template>
+
+  <!-- System Declaration -->
+  <system>
+// Instantiate templates
+therapy = SurfactantTherapy();
+env = Environment();
+
+// Compose system
+system therapy, env;
+  </system>
+
+  <!-- Verification Queries -->
+  <queries>
+    <query>
+      <formula>A[] (therapy.Contraindicated imply has_contraindication)</formula>
+      <comment>Contraindication is necessary for blocked state</comment>
+    </query>
+    <query>
+      <formula>A[] (has_contraindication imply !surfactant_given)</formula>
+      <comment>Contraindication blocks all treatment</comment>
+    </query>
+    <query>
+      <formula>A[] (surfactant_given imply time_since_rds &lt;= SURFACTANT_WINDOW_MAX)</formula>
+      <comment>Surfactant only given within 2-hour window</comment>
+    </query>
+    <query>
+      <formula>A[] (doses_given &lt;= MAX_DOSES)</formula>
+      <comment>Maximum 4 doses never exceeded</comment>
+    </query>
+    <query>
+      <formula>A[] (therapy.Responded imply time_since_dose &gt;= RESPONSE_EVAL_MIN)</formula>
+      <comment>Response evaluated only after minimum time</comment>
+    </query>
+    <query>
+      <formula>A[] ((ga_total_days &gt;= GA_PROPHYLACTIC_DAYS &amp;&amp; fio2 &lt;= FIO2_THRESHOLD) imply !surfactant_indicated())</formula>
+      <comment>Well infant (GA &gt;= 30w, FiO2 &lt;= 30%) never indicated</comment>
+    </query>
+    <query>
+      <formula>E&lt;&gt; therapy.Weaned</formula>
+      <comment>Reachability: successful weaning is possible</comment>
+    </query>
+    <query>
+      <formula>E&lt;&gt; therapy.Surfactant_Given</formula>
+      <comment>Reachability: surfactant administration is possible</comment>
+    </query>
+    <query>
+      <formula>A[] not deadlock</formula>
+      <comment>No deadlock in any reachable state</comment>
+    </query>
+    <query>
+      <formula>therapy.Evaluating --&gt; (therapy.Surfactant_Given || therapy.WindowExpired)</formula>
+      <comment>Leads-to: evaluation leads to treatment or timeout</comment>
+    </query>
+  </queries>
+</nta>

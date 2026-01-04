@@ -75,12 +75,11 @@
    TARGET: EXERCISED (requires external validation)
 
    TODO:
-   1.  Export to UPPAAL timed automata for temporal verification
-   2.  Obtain anonymized NICU case records (n >= 50) for validation
-   3.  Run recommend_surfactant_safe against historical decisions
-   4.  Measure concordance rate with attending neonatologist decisions
-   5.  Document false positives/negatives vs. clinician decisions
-   6.  Cross-validate: same test cases, same verdicts across tools
+   1.  Obtain anonymized NICU case records (n >= 50) for validation
+   2.  Run recommend_surfactant_safe against historical decisions
+   3.  Measure concordance rate with attending neonatologist decisions
+   4.  Document false positives/negatives vs. clinician decisions
+   5.  Cross-validate: same test cases, same verdicts across tools
 *)
 
 From Coq Require Import Arith Lia List.
