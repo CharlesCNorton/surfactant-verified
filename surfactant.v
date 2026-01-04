@@ -79,6 +79,14 @@
    2.  Run recommend_surfactant_safe against historical decisions
    3.  Measure concordance rate with attending neonatologist decisions
    4.  Document false positives/negatives vs. clinician decisions
+   5.  Prove formal refinement linking Coq semantics to SPIN/UPPAAL models
+   6.  Validate local policy dose caps (400/600/420mg) against institutional data
+   7.  Confirm LISA GA threshold (≥25w) against multi-center practice variation
+   8.  Parameterize CPAP minimum duration gate (30 min) per institutional policy
+   9.  Validate blood gas thresholds (pH<7.20, pCO2>60) against neonatal studies
+   10. Add formal verification for server.py and HTTP API pathway
+   11. Clinically validate product-specific prophylactic timing (15 vs 30 min)
+   12. Handle edge cases where imaging contradicts clinical presentation
 
    ALTERNATIVE VALIDATION METHOD (no IRB required):
    Literature-based case extraction enables validation against published

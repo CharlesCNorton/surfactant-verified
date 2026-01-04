@@ -194,7 +194,7 @@ let run_fuzz_tests n =
       invariant_failures.(5) <- invariant_failures.(5) + 1
     end;
 
-    if i mod 1000 = 0 then
+    if i mod 2500 = 0 then
       Printf.printf "  Progress: %d/%d iterations\n%!" i n
   done;
 
@@ -226,7 +226,7 @@ let () =
     if Array.length Sys.argv > 1 then
       int_of_string Sys.argv.(1)
     else
-      1000  (* Default to 1000 for quick runs *)
+      10000  (* Default to 10000 for thorough coverage *)
   in
 
   let exit_code = run_fuzz_tests num_iterations in
