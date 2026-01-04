@@ -782,21 +782,28 @@ Qed.
 (** Safety Theorems                                                            *)
 (** -------------------------------------------------------------------------- *)
 
-(** Safe to give surfactant if indicated and valid patient. *)
-Definition safe_to_give (p : Patient) (signs : RDSSigns) (dose : nat) : Prop :=
+(** Safe to give surfactant requires:
+    1. Valid patient within physiological bounds
+    2. Clinical indication present (prophylactic or rescue)
+    3. No contraindications
+    4. Valid dose *)
+Definition safe_to_give (p : Patient) (signs : RDSSigns)
+                        (c : Contraindications) (dose : nat) : Prop :=
   valid_patient p /\
   surfactant_indicated p signs /\
+  no_contraindications c /\
   dose_valid dose.
 
 (** Theorem: If all preconditions met, administration is safe. *)
 Theorem administration_safe :
-  forall p signs dose,
+  forall p signs c dose,
     valid_patient p ->
     surfactant_indicated p signs ->
+    no_contraindications c ->
     dose_valid dose ->
-    safe_to_give p signs dose.
+    safe_to_give p signs c dose.
 Proof.
-  intros p signs dose Hvalid Hind Hdose.
+  intros p signs c dose Hvalid Hind Hcontra Hdose.
   unfold safe_to_give. auto.
 Qed.
 
