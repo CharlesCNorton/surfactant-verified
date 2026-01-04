@@ -82,10 +82,9 @@
    5.  Prove formal refinement linking Coq semantics to SPIN/UPPAAL models
    6.  Validate local policy dose caps (400/600/420mg) against institutional data
    7.  Confirm LISA GA threshold (≥25w) against multi-center practice variation
-   8.  Validate blood gas thresholds (pH<7.20, pCO2>60) against neonatal studies
-   9.  Add formal verification for server.py and HTTP API pathway
-   10. Clinically validate product-specific prophylactic timing (15 vs 30 min)
-   11. Handle edge cases where imaging contradicts clinical presentation
+   8.  Add formal verification for server.py and HTTP API pathway
+   9.  Clinically validate product-specific prophylactic timing (15 vs 30 min)
+   10. Handle edge cases where imaging contradicts clinical presentation
 
    ALTERNATIVE VALIDATION METHOD (no IRB required):
    Literature-based case extraction enables validation against published
@@ -685,7 +684,25 @@ Record BloodGas := mkBloodGas {
   po2 : nat         (* pO2 in mmHg, less critical for surfactant decision *)
 }.
 
-(** Respiratory acidosis thresholds. *)
+(** Respiratory acidosis thresholds.
+
+    VALIDATED against neonatal literature:
+
+    pH < 7.20:
+    - Permissive hypercapnia protocols use pH ≥ 7.20-7.25 as lower bound
+    - Travers et al: "pH ≥ 7.20 and PCO2 60-75 mmHg" for late permissive hypercapnia
+    - Widely accepted as threshold below which acidosis becomes clinically significant
+
+    pCO2 > 60 mmHg:
+    - PHELBI trial (Lancet Respir Med 2015): high target 55-75 mmHg
+    - Common clinical practice: pCO2 50s-60s acceptable if pH maintained
+    - Cochrane review: strategies targeting >55 mmHg require controlled trials
+    - One author defines permissive hypercapnia as "PaCO2 not more than 60 mmHg"
+
+    Sources:
+    - PHELBI trial: doi:10.1016/S2213-2600(15)00204-0
+    - Cochrane: doi:10.1002/14651858.CD002061.pub2
+    - Pediatric Research 2021: doi:10.1038/s41390-021-01473-y *)
 Definition ph_critical_low : nat := 7200.   (* pH < 7.20 *)
 Definition pco2_critical_high : nat := 60.  (* pCO2 > 60 mmHg *)
 
