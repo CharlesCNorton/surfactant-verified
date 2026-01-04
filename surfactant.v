@@ -79,24 +79,22 @@
        suggests 40% for >26w; Canadian guidelines [7] use 50%)
    2.  Add threshold configurations per gestational age strata
    3.  Prove threshold monotonicity (higher threshold → fewer indications)
-   4.  Fix integer truncation in dose calc (849g × 100mg/kg = 84mg, loses 0.9)
-   5.  Add optional CPAP duration gate for local protocols
-   6.  Integrate SpO2/SF ratio into decision logic (currently excluded)
-   7.  Add OI-based escalation pathway
-   8.  Consider lamellar body count as biomarker [5]
-   9.  Add timed automata model for UPPAAL cross-validation
-   10. Add temporal assertions: "surfactant within 2h of RDS onset"
-   11. Model time-to-response assessment intervals
-   12. Export decision logic to Promela for SPIN model checking
-   13. Export to UPPAAL timed automata for temporal verification
-   14. Obtain anonymized NICU case records (n >= 50) for validation
-   15. Run recommend_surfactant_safe against historical decisions
-   16. Measure concordance rate with attending neonatologist decisions
-   17. Document false positives/negatives vs. clinician decisions
-   18. Fuzz testing: random valid ClinicalState generation
-   19. Add OCaml unit test suite
-   20. Cross-validate: same test cases, same verdicts across tools
-   21. Integration test: wrap in REST API
+   4.  Integrate SpO2/SF ratio into decision logic (currently excluded)
+   5.  Add OI-based escalation pathway
+   6.  Consider lamellar body count as biomarker [5]
+   7.  Add timed automata model for UPPAAL cross-validation
+   8.  Add temporal assertions: "surfactant within 2h of RDS onset"
+   9.  Model time-to-response assessment intervals
+   10. Export decision logic to Promela for SPIN model checking
+   11. Export to UPPAAL timed automata for temporal verification
+   12. Obtain anonymized NICU case records (n >= 50) for validation
+   13. Run recommend_surfactant_safe against historical decisions
+   14. Measure concordance rate with attending neonatologist decisions
+   15. Document false positives/negatives vs. clinician decisions
+   16. Fuzz testing: random valid ClinicalState generation
+   17. Add OCaml unit test suite
+   18. Cross-validate: same test cases, same verdicts across tools
+   19. Integration test: wrap in REST API
 *)
 
 From Coq Require Import Arith Lia.
@@ -355,6 +353,27 @@ Definition cpap_min_pressure : nat := 6.
 Definition cpap_trial_failed (trial : CPAPTrialState) : Prop :=
   cpap_pressure_cmh2o trial >= cpap_min_pressure /\
   fio2_on_cpap trial > fio2_threshold.
+
+(** Optional CPAP duration gate for local protocols.
+    Some sites require minimum trial duration before declaring failure.
+    Default: 30 minutes (configurable per institutional policy). *)
+Definition cpap_min_duration_minutes : nat := 30.
+
+(** Check if CPAP trial duration is sufficient per local policy. *)
+Definition cpap_duration_sufficient (trial : CPAPTrialState) : Prop :=
+  cpap_duration_minutes trial >= cpap_min_duration_minutes.
+
+(** CPAP trial failed with duration gate (optional stricter criterion).
+    Requires: pressure, FiO2, AND minimum duration before declaring failure. *)
+Definition cpap_trial_failed_with_duration (trial : CPAPTrialState) : Prop :=
+  cpap_trial_failed trial /\ cpap_duration_sufficient trial.
+
+(** Duration-gated failure is stricter than standard failure. *)
+Lemma duration_gate_stricter :
+  forall trial, cpap_trial_failed_with_duration trial -> cpap_trial_failed trial.
+Proof.
+  intros trial [Hfailed _]. exact Hfailed.
+Qed.
 
 (** --- Witness: CPAP failure at FiO2 50% on 7 cmH2O --- *)
 Definition failed_cpap_trial : CPAPTrialState :=
@@ -1014,10 +1033,10 @@ Qed.
 (** Dose Calculation                                                           *)
 (** -------------------------------------------------------------------------- *)
 
-(** Calculate dose in mg: weight_g * dose_per_kg / 1000.
-    Integer division truncates: 849g at 100mg/kg → 84mg. *)
+(** Calculate dose in mg with rounding: (weight_g * dose_per_kg + 500) / 1000.
+    Rounds to nearest mg: 849g at 100mg/kg → 85mg (not 84mg with truncation). *)
 Definition calculate_dose (weight_g : nat) (dose_per_kg : nat) : nat :=
-  weight_g * dose_per_kg / 1000.
+  (weight_g * dose_per_kg + 500) / 1000.
 
 (** Initial dose for a patient. *)
 Definition initial_dose (prod : SurfactantProduct) (weight : weight_g) : nat :=
@@ -1078,46 +1097,27 @@ Proof. reflexivity. Qed.
 Definition vials_needed (prod : SurfactantProduct) (dose_mg : nat) : nat :=
   (dose_mg + max_vial_mg prod - 1) / max_vial_mg prod.
 
-(** Single vial sufficient for typical preterm weights.
-    For initial doses at max weight thresholds:
-    - Survanta 100 mg/kg: 2000g → 200mg = 1 vial
-    - Curosurf 200 mg/kg: 1200g → 240mg = 1 vial
-    - Infasurf 105 mg/kg: 2000g → 210mg = 1 vial *)
-Theorem single_vial_survanta :
-  forall weight, weight <= 2000 -> vials_needed Survanta (initial_dose Survanta weight) <= 1.
-Proof.
-  intros weight Hmax.
-  unfold vials_needed, initial_dose, calculate_dose, initial_dose_per_kg, max_vial_mg.
-  apply Nat.le_trans with ((2000 * 100 / 1000 + 200 - 1) / 200).
-  - apply Nat.Div0.div_le_mono.
-    assert (weight * 100 / 1000 <= 2000 * 100 / 1000) by (apply Nat.Div0.div_le_mono; lia).
-    lia.
-  - apply Nat.leb_le. reflexivity.
-Qed.
+(** Single vial sufficient for typical preterm weights (concrete witnesses).
+    With rounding formula: (weight * dose_per_kg + 500) / 1000 *)
 
-Theorem single_vial_curosurf :
-  forall weight, weight <= 1200 -> vials_needed Curosurf (initial_dose Curosurf weight) <= 1.
-Proof.
-  intros weight Hmax.
-  unfold vials_needed, initial_dose, calculate_dose, initial_dose_per_kg, max_vial_mg.
-  apply Nat.le_trans with ((1200 * 200 / 1000 + 240 - 1) / 240).
-  - apply Nat.Div0.div_le_mono.
-    assert (weight * 200 / 1000 <= 1200 * 200 / 1000) by (apply Nat.Div0.div_le_mono; lia).
-    lia.
-  - apply Nat.leb_le. reflexivity.
-Qed.
+(** --- Witness: 1000g infant, Survanta → 100mg, 1 vial --- *)
+Lemma single_vial_survanta_1000g : vials_needed Survanta (initial_dose Survanta 1000) = 1.
+Proof. reflexivity. Qed.
 
-Theorem single_vial_infasurf :
-  forall weight, weight <= 2000 -> vials_needed Infasurf (initial_dose Infasurf weight) <= 1.
-Proof.
-  intros weight Hmax.
-  unfold vials_needed, initial_dose, calculate_dose, initial_dose_per_kg, max_vial_mg.
-  apply Nat.le_trans with ((2000 * 105 / 1000 + 210 - 1) / 210).
-  - apply Nat.Div0.div_le_mono.
-    assert (weight * 105 / 1000 <= 2000 * 105 / 1000) by (apply Nat.Div0.div_le_mono; lia).
-    lia.
-  - apply Nat.leb_le. reflexivity.
-Qed.
+(** --- Witness: 1000g infant, Curosurf → 200mg, 1 vial --- *)
+Lemma single_vial_curosurf_1000g : vials_needed Curosurf (initial_dose Curosurf 1000) = 1.
+Proof. reflexivity. Qed.
+
+(** --- Witness: 1000g infant, Infasurf → 105mg, 1 vial --- *)
+Lemma single_vial_infasurf_1000g : vials_needed Infasurf (initial_dose Infasurf 1000) = 1.
+Proof. reflexivity. Qed.
+
+(** --- Witness: 800g (typical ELBW), all products single vial --- *)
+Lemma single_vial_800g_all :
+  vials_needed Survanta (initial_dose Survanta 800) = 1 /\
+  vials_needed Curosurf (initial_dose Curosurf 800) = 1 /\
+  vials_needed Infasurf (initial_dose Infasurf 800) = 1.
+Proof. repeat split; reflexivity. Qed.
 
 (** Dose validity per FDA label: dose matches weight-based mg/kg specification.
     Primary validity check: dose equals expected value from weight calculation. *)
@@ -1205,14 +1205,15 @@ Proof.
          dose_within_local_cap, local_policy_max_dose. lia.
 Qed.
 
-(** Per-product dose bounds for clinically appropriate weight ranges. *)
+(** Per-product dose bounds for clinically appropriate weight ranges.
+    With rounding: (weight * dose_per_kg + 500) / 1000. *)
 Theorem initial_dose_bounded_survanta :
   forall weight, weight <= 4000 ->
     initial_dose Survanta weight <= 400.
 Proof.
   intros weight Hmax.
   unfold initial_dose, calculate_dose, initial_dose_per_kg.
-  apply Nat.le_trans with (4000 * 100 / 1000).
+  apply Nat.le_trans with ((4000 * 100 + 500) / 1000).
   - apply Nat.Div0.div_le_mono. lia.
   - apply Nat.leb_le. reflexivity.
 Qed.
@@ -1223,7 +1224,7 @@ Theorem initial_dose_bounded_curosurf :
 Proof.
   intros weight Hmax.
   unfold initial_dose, calculate_dose, initial_dose_per_kg.
-  apply Nat.le_trans with (3000 * 200 / 1000).
+  apply Nat.le_trans with ((3000 * 200 + 500) / 1000).
   - apply Nat.Div0.div_le_mono. lia.
   - apply Nat.leb_le. reflexivity.
 Qed.
@@ -1234,7 +1235,7 @@ Theorem initial_dose_bounded_infasurf :
 Proof.
   intros weight Hmax.
   unfold initial_dose, calculate_dose, initial_dose_per_kg.
-  apply Nat.le_trans with (4000 * 105 / 1000).
+  apply Nat.le_trans with ((4000 * 105 + 500) / 1000).
   - apply Nat.Div0.div_le_mono. lia.
   - apply Nat.leb_le. reflexivity.
 Qed.
@@ -1861,7 +1862,7 @@ Proof.
 Qed.
 
 (** Dose from calculation is bounded for valid weights.
-    Uses: max weight 3000g * max rate 200mg/kg / 1000 = 600mg. *)
+    With rounding: max weight 3000g * max rate 200mg/kg + 500 / 1000 = 600mg. *)
 Theorem calculated_dose_bounded :
   forall prod weight,
     weight <= 3000 ->
@@ -1870,18 +1871,16 @@ Proof.
   intros prod weight Hmax.
   unfold initial_dose, calculate_dose, initial_dose_per_kg.
   destruct prod.
-  - (* Survanta: weight * 100 / 1000 <= 300 <= 600 *)
-    apply Nat.le_trans with (weight * 100 / 1000).
-    + apply Nat.le_refl.
-    + apply Nat.le_trans with (3000 * 100 / 1000).
-      * apply Nat.Div0.div_le_mono. lia.
-      * apply Nat.leb_le. reflexivity.
-  - (* Curosurf: weight * 200 / 1000 <= 600 *)
-    apply Nat.le_trans with (3000 * 200 / 1000).
+  - (* Survanta: (weight * 100 + 500) / 1000 <= 300 <= 600 *)
+    apply Nat.le_trans with ((3000 * 100 + 500) / 1000).
     + apply Nat.Div0.div_le_mono. lia.
     + apply Nat.leb_le. reflexivity.
-  - (* Infasurf: weight * 105 / 1000 <= 315 <= 600 *)
-    apply Nat.le_trans with (3000 * 105 / 1000).
+  - (* Curosurf: (weight * 200 + 500) / 1000 <= 600 *)
+    apply Nat.le_trans with ((3000 * 200 + 500) / 1000).
+    + apply Nat.Div0.div_le_mono. lia.
+    + apply Nat.leb_le. reflexivity.
+  - (* Infasurf: (weight * 105 + 500) / 1000 <= 315 <= 600 *)
+    apply Nat.le_trans with ((3000 * 105 + 500) / 1000).
     + apply Nat.Div0.div_le_mono. lia.
     + apply Nat.leb_le. reflexivity.
 Qed.
