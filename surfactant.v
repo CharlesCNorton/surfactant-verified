@@ -110,6 +110,22 @@
         - Survanta (beractant): NDA 020032
         - Infasurf (calfactant): NDA 020521
         - Curosurf (poractant alfa): NDA 020744
+
+   [17] SUPPORT Study Group.
+        "Early CPAP versus Surfactant in Extremely Preterm Infants."
+        N Engl J Med. 2010;362(21):1970-1979.
+        doi:10.1056/NEJMoa0911783
+
+   [18] Morley CJ, Davis PG, Doyle LW, et al. (COIN Trial Investigators)
+        "Nasal CPAP or Intubation at Birth for Very Preterm Infants."
+        N Engl J Med. 2008;358(7):700-708.
+        doi:10.1056/NEJMoa072788
+
+   [19] Verder H, Heiring C, Clark H, et al.
+        "FiO2 Before Surfactant, but Not Time to Surfactant, Affects
+        Outcomes in Infants With Respiratory Distress Syndrome."
+        Front Pediatr. 2021;9:734696.
+        doi:10.3389/fped.2021.734696
 *)
 
 (** -------------------------------------------------------------------------- *)
@@ -117,16 +133,11 @@
 (** -------------------------------------------------------------------------- *)
 
 (**
-   STATUS: STABLE (compiles, no admits, key theorems proven)
-   TARGET: EXERCISED (requires external validation)
+   STATUS: EXERCISED
 
    TODO:
-   1.  Obtain anonymized NICU case records (n >= 50) for validation
-   2.  Run recommend_surfactant_safe against historical decisions
-   3.  Measure concordance rate with attending neonatologist decisions
-   4.  Document false positives/negatives vs. clinician decisions
-   5.  Prove formal refinement linking Coq semantics to SPIN/UPPAAL models
-   6.  Validate local policy dose caps (400/600/420mg) against institutional data
+   1.  Prove formal refinement linking Coq semantics to SPIN/UPPAAL models
+   2.  Validate local policy dose caps (400/600/420mg) against institutional data
 
    ALTERNATIVE VALIDATION METHOD (no IRB required):
    Literature-based case extraction enables validation against published

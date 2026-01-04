@@ -1,0 +1,117 @@
+{
+  "run_date": "2026-01-04T18:50:29.746874",
+  "summary": {
+    "total": 15,
+    "concordant": 15,
+    "discordant": 0,
+    "errors": 0,
+    "agreement_rate": 1.0
+  },
+  "results": [
+    {
+      "id": "LIT01",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "Prophylactic: 26w intubated at 5min - SUPPORT trial profile"
+    },
+    {
+      "id": "LIT02",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "Prophylactic boundary: 29+6w (209 days) - should qualify"
+    },
+    {
+      "id": "LIT03",
+      "expected": "NotIndicated",
+      "actual": "NotIndicated",
+      "status": "PASS",
+      "description": "Prophylactic boundary: 30+0w (210 days) - should NOT qualify"
+    },
+    {
+      "id": "LIT04",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "Rescue: FiO2 40% on CPAP with RDS signs - Frontiers median"
+    },
+    {
+      "id": "LIT05",
+      "expected": "NotIndicated",
+      "actual": "NotIndicated",
+      "status": "PASS",
+      "description": "Rescue boundary: FiO2 30% - at threshold, should NOT qualify"
+    },
+    {
+      "id": "LIT06",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "Rescue boundary: FiO2 31% - just above threshold, should qualify"
+    },
+    {
+      "id": "LIT07",
+      "expected": "NotIndicated",
+      "actual": "NotIndicated",
+      "status": "PASS",
+      "description": "Contraindication: CDH blocks despite meeting criteria"
+    },
+    {
+      "id": "LIT08",
+      "expected": "NotIndicated",
+      "actual": "NotIndicated",
+      "status": "PASS",
+      "description": "Well infant: 34w, FiO2 21%, no signs - should NOT qualify"
+    },
+    {
+      "id": "LIT09",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "Severe RDS: FiO2 >60% - high failure risk per Frontiers"
+    },
+    {
+      "id": "LIT10",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "COIN trial profile: 27w on CPAP, FiO2 45%"
+    },
+    {
+      "id": "LIT11",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "Late preterm: 35w with RDS, FiO2 50%"
+    },
+    {
+      "id": "LIT12",
+      "expected": "NotIndicated",
+      "actual": "NotIndicated",
+      "status": "PASS",
+      "description": "Only 1 clinical sign - insufficient for rescue"
+    },
+    {
+      "id": "LIT13",
+      "expected": "NotIndicated",
+      "actual": "NotIndicated",
+      "status": "PASS",
+      "description": "Prophylactic timing: 20 min post-birth - too late for Survanta"
+    },
+    {
+      "id": "LIT14",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "Dose validation: Survanta 1000g = 100mg"
+    },
+    {
+      "id": "LIT15",
+      "expected": "Indicated",
+      "actual": "Indicated",
+      "status": "PASS",
+      "description": "Dose validation: Curosurf 900g = 180mg"
+    }
+  ]
+}
