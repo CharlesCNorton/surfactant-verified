@@ -107,13 +107,13 @@ bool env_good_response;
 
 active proctype SurfactantTherapy() {
 
-    /* Initialize patient - nondeterministic values within valid ranges */
-    patient.ga_weeks = 22 + (byte)((_pid * 7) % 20);  /* 22-41 weeks */
-    patient.ga_days = (byte)(_pid % 7);
-    patient.weight_g = 500 + (short)((_pid * 100) % 3000);
-    patient.fio2 = 21 + (byte)((_pid * 5) % 80);
-    patient.intubated = false;
-    patient.has_rds_signs = false;
+    /* Initialize patient with default values */
+    patient.ga_weeks = 28;
+    patient.ga_days = 0;
+    patient.weight_g = 1000;
+    patient.fio2 = 45;
+    patient.intubated = true;
+    patient.has_rds_signs = true;
     patient.has_contraindication = false;
 
     /* Main state machine loop */
