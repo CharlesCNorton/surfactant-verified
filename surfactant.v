@@ -61,10 +61,8 @@
    [DONE] 4. rescue_recommendation: proved conservative vs guideline-minimal.
              See conservative_implies_guideline, conservative_rejects_case.
 
-   5. Add OCaml wrapper guidance for nat→int extraction safety. Options:
-      - Keep Peano nat (slow but safe)
-      - Use Z with ≥0 validation at boundary
-      - OCaml wrapper rejecting negative ints before calling extracted code
+   [DONE] 5. OCaml extraction safety: validate_clinical_state checks all fields,
+             recommend_surfactant_safe returns InvalidInput on range errors.
 *)
 
 From Coq Require Import Arith Lia.
@@ -76,6 +74,9 @@ From Coq Require Import Arith Lia.
 (** Gestational age in completed weeks (22-42 typical range). *)
 Definition gestational_age := nat.
 
+(** Gestational age days component (0-6). *)
+Definition ga_days_t := nat.
+
 (** Birth weight in grams. *)
 Definition weight_g := nat.
 
@@ -85,23 +86,29 @@ Definition postnatal_hours := nat.
 (** FiO2 as percentage (21-100). 21 = room air, 100 = pure oxygen. *)
 Definition fio2_pct := nat.
 
-(** Patient state for surfactant decision. *)
+(** Patient state for surfactant decision. GA expressed as weeks+days: 29+6 → 29, 6. *)
 Record Patient := mkPatient {
   ga_weeks : gestational_age;
+  ga_days : ga_days_t;
   birth_weight : weight_g;
   age_hours : postnatal_hours;
   current_fio2 : fio2_pct
 }.
 
+(** Total gestational age in days. *)
+Definition ga_total_days (p : Patient) : nat :=
+  ga_weeks p * 7 + ga_days p.
+
 (** Validity predicate: GA and weight within physiological bounds. *)
 Definition valid_patient (p : Patient) : Prop :=
   22 <= ga_weeks p /\ ga_weeks p <= 42 /\
+  ga_days p <= 6 /\
   200 <= birth_weight p /\ birth_weight p <= 6000 /\
   21 <= current_fio2 p /\ current_fio2 p <= 100.
 
-(** --- Witness: A valid 26-week, 800g infant --- *)
+(** --- Witness: A valid 26+0 week, 800g infant --- *)
 Definition witness_patient : Patient :=
-  mkPatient 26 800 2 45.
+  mkPatient 26 0 800 2 45.
 
 Lemma witness_patient_valid : valid_patient witness_patient.
 Proof.
@@ -111,7 +118,7 @@ Qed.
 
 (** --- Counterexample: Invalid GA (50 weeks) --- *)
 Definition invalid_patient_ga : Patient :=
-  mkPatient 50 3000 1 21.
+  mkPatient 50 0 3000 1 21.
 
 Lemma invalid_patient_ga_not_valid : ~ valid_patient invalid_patient_ga.
 Proof.
@@ -794,10 +801,10 @@ Qed.
     For complete clinical decision-making, use surfactant_recommendation
     which integrates timing, contraindications, CXR, and CPAP context. *)
 
-(** Prophylactic indication (core): GA < 26 weeks.
-    Full prophylactic recommendation also requires timing window. *)
+(** Prophylactic indication (core): GA < 30+0 weeks (< 210 days).
+    Uses precise GA including days: 29+6 (209 days) qualifies, 30+0 (210) doesn't. *)
 Definition prophylactic_indicated (p : Patient) : Prop :=
-  prophylactic_eligible_ga (ga_weeks p).
+  ga_total_days p < 210.
 
 (** Rescue indication (core): FiO2 elevated AND clinical signs present.
     Full rescue recommendation also requires CXR consistency and CPAP context. *)
@@ -811,7 +818,7 @@ Definition surfactant_indicated (p : Patient) (signs : RDSSigns) : Prop :=
   prophylactic_indicated p \/ rescue_indicated p signs.
 
 (** --- Witness: 27w infant with FiO2 40% and signs → rescue indicated --- *)
-Definition rescue_patient : Patient := mkPatient 27 900 6 40.
+Definition rescue_patient : Patient := mkPatient 27 0 900 6 40.
 Definition rescue_signs : RDSSigns := mkRDSSigns true true false false.
 
 Lemma rescue_patient_indicated : surfactant_indicated rescue_patient rescue_signs.
@@ -822,13 +829,13 @@ Proof.
 Qed.
 
 (** --- Counterexample: 34w infant with FiO2 21% and no signs → not indicated --- *)
-Definition well_patient : Patient := mkPatient 34 2200 12 21.
+Definition well_patient : Patient := mkPatient 34 0 2200 12 21.
 Definition well_signs : RDSSigns := mkRDSSigns false false false false.
 
 Lemma well_patient_not_indicated : ~ surfactant_indicated well_patient well_signs.
 Proof.
-  unfold surfactant_indicated, prophylactic_indicated, prophylactic_eligible_ga,
-         prophylactic_ga_threshold, rescue_indicated, fio2_elevated, fio2_threshold,
+  unfold surfactant_indicated, prophylactic_indicated, ga_total_days,
+         rescue_indicated, fio2_elevated, fio2_threshold,
          well_patient. simpl. lia.
 Qed.
 
@@ -896,8 +903,8 @@ Qed.
 (** Dose Calculation                                                           *)
 (** -------------------------------------------------------------------------- *)
 
-(** Calculate dose in mg given weight in grams and dose per kg.
-    Weight is in grams, so we compute: weight_g * dose_per_kg / 1000. *)
+(** Calculate dose in mg: weight_g * dose_per_kg / 1000.
+    Integer division truncates: 849g at 100mg/kg → 84mg. *)
 Definition calculate_dose (weight_g : nat) (dose_per_kg : nat) : nat :=
   weight_g * dose_per_kg / 1000.
 
@@ -1215,10 +1222,10 @@ Record ClinicalState := mkClinicalState {
   cs_current_support : RespiratorySupport
 }.
 
-(** Prophylactic pathway: GA < 30w, intubated for stabilization, within timing
-    window, no contraindications. Per European Consensus 2022. *)
+(** Prophylactic pathway: GA < 30+0w (< 210 days), intubated for stabilization,
+    within timing window, no contraindications. Per European Consensus 2022. *)
 Definition prophylactic_recommendation (cs : ClinicalState) : Prop :=
-  prophylactic_eligible_ga (ga_weeks (cs_patient cs)) /\
+  ga_total_days (cs_patient cs) < 210 /\
   cs_current_support cs = Intubated /\
   within_prophylactic_window (cs_minutes_since_birth cs) /\
   no_contraindications (cs_contraindications cs).
@@ -1275,7 +1282,7 @@ Qed.
     FiO2 elevated, CPAP failed, but no imaging/blood gas evidence. *)
 Definition guideline_only_case : ClinicalState :=
   mkClinicalState
-    (mkPatient 30 1200 12 50)          (* 30w, 1200g, 12h old, FiO2 50% *)
+    (mkPatient 30 0 1200 12 50)         (* 30+0w, 1200g, 12h old, FiO2 50% *)
     (mkRDSSigns true true false false) (* Grunting, retractions *)
     clear_contraindications
     (mkImagingEvidence None None false) (* No imaging, no clinical override *)
@@ -1317,7 +1324,7 @@ Definition surfactant_recommendation (cs : ClinicalState) : Prop :=
 (** --- Witness: Complete prophylactic case --- *)
 Definition prophylactic_case : ClinicalState :=
   mkClinicalState
-    (mkPatient 28 900 0 40)           (* 28w, 900g, just born, on O2 *)
+    (mkPatient 28 0 900 0 40)          (* 28+0w, 900g, just born, on O2 *)
     (mkRDSSigns false false false false) (* No signs yet *)
     clear_contraindications
     (mkImagingEvidence None None false) (* No imaging yet - not needed for prophylactic *)
@@ -1331,16 +1338,16 @@ Proof.
   unfold surfactant_recommendation, prophylactic_case. split.
   - unfold valid_patient. simpl.
     repeat split; apply Nat.leb_le; reflexivity.
-  - left. unfold prophylactic_recommendation. simpl.
+  - left. unfold prophylactic_recommendation, ga_total_days. simpl.
     repeat split; try exact clear_contraindications_ok.
-    + unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
+    + lia.
     + unfold within_prophylactic_window, prophylactic_window_minutes. lia.
 Qed.
 
 (** --- Witness: Complete rescue case --- *)
 Definition rescue_case : ClinicalState :=
   mkClinicalState
-    (mkPatient 28 1100 6 50)          (* 28w, 1100g, 6h old, FiO2 50% *)
+    (mkPatient 28 0 1100 6 50)         (* 28+0w, 1100g, 6h old, FiO2 50% *)
     (mkRDSSigns true true true false) (* Grunting, retractions, flaring *)
     clear_contraindications
     cxr_evidence                       (* CXR shows RDS *)
@@ -1368,7 +1375,7 @@ Qed.
 (** --- Counterexample: Contraindication blocks despite meeting other criteria --- *)
 Definition contraindicated_case : ClinicalState :=
   mkClinicalState
-    (mkPatient 28 900 0 21)            (* Would qualify by GA, room air *)
+    (mkPatient 28 0 900 0 21)           (* Would qualify by GA, room air *)
     (mkRDSSigns false false false false)
     cdh_present                        (* CDH present - blocks! *)
     (mkImagingEvidence None None false) (* No imaging *)
@@ -1469,20 +1476,18 @@ Proof.
   exact cdh_is_contraindication.
 Qed.
 
-(** Well infant (GA >= 30, FiO2 <= 30) is never indicated.
+(** Well infant (GA >= 30+0, FiO2 <= 30) is never indicated.
     Substantive: proves the decision logic correctly excludes
     term or near-term infants not in respiratory distress. *)
 Theorem well_infant_not_indicated :
   forall p signs,
-    ga_weeks p >= 30 ->
+    ga_total_days p >= 210 ->
     current_fio2 p <= fio2_threshold ->
     ~ surfactant_indicated p signs.
 Proof.
   intros p signs Hga Hfio2.
   unfold surfactant_indicated. intros [Hpro | Hres].
-  - unfold prophylactic_indicated, prophylactic_eligible_ga,
-      prophylactic_ga_threshold in Hpro.
-    lia.
+  - unfold prophylactic_indicated in Hpro. lia.
   - unfold rescue_indicated in Hres. destruct Hres as [Hfio2_elev _].
     unfold fio2_elevated in Hfio2_elev. lia.
 Qed.
@@ -1490,7 +1495,7 @@ Qed.
 (** Withholding from well infant does not miss indication. *)
 Theorem withhold_well_infant_safe :
   forall p signs c dose,
-    ga_weeks p >= 30 ->
+    ga_total_days p >= 210 ->
     current_fio2 p <= fio2_threshold ->
     ~ safe_to_give p signs c dose.
 Proof.
@@ -1557,13 +1562,34 @@ Module SurfactantDecision.
   Definition fio2_elevated_dec (f : fio2_pct) : bool :=
     fio2_threshold <? f.
 
-  (** Decidable prophylactic eligibility. *)
-  Definition prophylactic_eligible_dec (ga : gestational_age) : bool :=
-    ga <? prophylactic_ga_threshold.
+  Lemma fio2_elevated_reflect : forall f,
+    fio2_elevated_dec f = true <-> fio2_elevated f.
+  Proof.
+    intros f. unfold fio2_elevated_dec, fio2_elevated.
+    apply Nat.ltb_lt.
+  Qed.
+
+  (** Decidable prophylactic indication using total days. *)
+  Definition prophylactic_indicated_dec (p : Patient) : bool :=
+    ga_total_days p <? 210.
+
+  Lemma prophylactic_indicated_reflect : forall p,
+    prophylactic_indicated_dec p = true <-> prophylactic_indicated p.
+  Proof.
+    intros p. unfold prophylactic_indicated_dec, prophylactic_indicated.
+    apply Nat.ltb_lt.
+  Qed.
 
   (** Decidable clinical RDS (>= 2 signs). *)
   Definition clinical_rds_dec (s : RDSSigns) : bool :=
     2 <=? sign_count s.
+
+  Lemma clinical_rds_reflect : forall s,
+    clinical_rds_dec s = true <-> clinical_rds s.
+  Proof.
+    intros s. unfold clinical_rds_dec, clinical_rds.
+    apply Nat.leb_le.
+  Qed.
 
   (** Calculate initial dose. *)
   Definition calc_initial_dose (prod : SurfactantProduct) (wt : weight_g) : nat :=
@@ -1577,9 +1603,24 @@ Module SurfactantDecision.
   Definition cpap_failed_dec (pressure : nat) (fio2 : fio2_pct) : bool :=
     (cpap_min_pressure <=? pressure) && (cpap_fio2_failure_threshold <? fio2).
 
+  Lemma cpap_failed_reflect : forall trial,
+    cpap_failed_dec (cpap_pressure_cmh2o trial) (fio2_on_cpap trial) = true <->
+    cpap_trial_failed trial.
+  Proof.
+    intros trial. unfold cpap_failed_dec, cpap_trial_failed.
+    rewrite Bool.andb_true_iff, Nat.leb_le, Nat.ltb_lt. reflexivity.
+  Qed.
+
   (** Check respiratory acidosis. *)
   Definition acidosis_dec (ph_val : ph_scaled) (pco2_val : pco2_mmhg) : bool :=
     (ph_val <? ph_critical_low) || (pco2_critical_high <? pco2_val).
+
+  Lemma acidosis_reflect : forall bg,
+    acidosis_dec (ph bg) (pco2 bg) = true <-> respiratory_acidosis bg.
+  Proof.
+    intros bg. unfold acidosis_dec, respiratory_acidosis.
+    rewrite Bool.orb_true_iff, !Nat.ltb_lt. reflexivity.
+  Qed.
 
   (** Decidable contraindication check. *)
   Definition no_contraindications_dec (c : Contraindications) : bool :=
@@ -1589,15 +1630,40 @@ Module SurfactantDecision.
     negb (active_pulmonary_hemorrhage c) &&
     negb (pneumothorax_untreated c).
 
+  Lemma no_contraindications_reflect : forall c,
+    no_contraindications_dec c = true <-> no_contraindications c.
+  Proof.
+    intros c. unfold no_contraindications_dec, no_contraindications.
+    repeat rewrite Bool.andb_true_iff.
+    repeat rewrite Bool.negb_true_iff.
+    destruct c; simpl; tauto.
+  Qed.
+
   (** Decidable CXR consistent with RDS. *)
   Definition cxr_consistent_dec (cxr : ChestXRay) : bool :=
     ground_glass_opacity cxr ||
     (air_bronchograms cxr && low_lung_volumes cxr).
 
+  Lemma cxr_consistent_reflect : forall cxr,
+    cxr_consistent_dec cxr = true <-> cxr_consistent_with_rds cxr.
+  Proof.
+    intros cxr. unfold cxr_consistent_dec, cxr_consistent_with_rds.
+    rewrite Bool.orb_true_iff, Bool.andb_true_iff.
+    destruct cxr; simpl; tauto.
+  Qed.
+
   (** Decidable ultrasound consistent with RDS. *)
   Definition ultrasound_consistent_dec (us : LungUltrasound) : bool :=
     bilateral_white_lung us ||
     (consolidations us && pleural_irregularity us).
+
+  Lemma ultrasound_consistent_reflect : forall us,
+    ultrasound_consistent_dec us = true <-> ultrasound_consistent_with_rds us.
+  Proof.
+    intros us. unfold ultrasound_consistent_dec, ultrasound_consistent_with_rds.
+    rewrite Bool.orb_true_iff, Bool.andb_true_iff.
+    destruct us; simpl; tauto.
+  Qed.
 
   (** Decidable imaging supports RDS: CXR OR ultrasound OR clinical judgement. *)
   Definition imaging_supports_dec (ie : ImagingEvidence) : bool :=
@@ -1611,34 +1677,95 @@ Module SurfactantDecision.
     end ||
     ie_clinical_judgement ie.
 
+  Lemma imaging_supports_reflect : forall ie,
+    imaging_supports_dec ie = true <-> imaging_supports_rds ie.
+  Proof.
+    intros ie. unfold imaging_supports_dec, imaging_supports_rds.
+    repeat rewrite Bool.orb_true_iff.
+    destruct (ie_cxr ie) as [cxr|] eqn:Hcxr;
+    destruct (ie_ultrasound ie) as [us|] eqn:Hus;
+    try rewrite cxr_consistent_reflect;
+    try rewrite ultrasound_consistent_reflect;
+    destruct (ie_clinical_judgement ie); simpl; tauto.
+  Qed.
+
   (** Decidable timing window check. *)
   Definition within_timing_window_dec (mins : minutes_since_birth) : bool :=
     mins <=? prophylactic_window_minutes.
 
+  Lemma within_timing_window_reflect : forall mins,
+    within_timing_window_dec mins = true <-> within_prophylactic_window mins.
+  Proof.
+    intros mins. unfold within_timing_window_dec, within_prophylactic_window.
+    apply Nat.leb_le.
+  Qed.
+
   (** Decidable patient validity. *)
   Definition valid_patient_dec (p : Patient) : bool :=
     (22 <=? ga_weeks p) && (ga_weeks p <=? 42) &&
+    (ga_days p <=? 6) &&
     (200 <=? birth_weight p) && (birth_weight p <=? 6000) &&
     (21 <=? current_fio2 p) && (current_fio2 p <=? 100).
 
-  (** Decidable surfactant indication (original simple version). *)
+  Lemma valid_patient_reflect : forall p,
+    valid_patient_dec p = true <-> valid_patient p.
+  Proof.
+    intros p. unfold valid_patient_dec, valid_patient.
+    repeat rewrite Bool.andb_true_iff.
+    repeat rewrite Nat.leb_le.
+    tauto.
+  Qed.
+
+  (** Decidable surfactant indication. *)
   Definition surfactant_indicated_dec (p : Patient) (signs : RDSSigns) : bool :=
-    prophylactic_eligible_dec (ga_weeks p) ||
+    prophylactic_indicated_dec p ||
     (fio2_elevated_dec (current_fio2 p) && clinical_rds_dec signs).
 
+  Lemma surfactant_indicated_reflect : forall p signs,
+    surfactant_indicated_dec p signs = true <-> surfactant_indicated p signs.
+  Proof.
+    intros p signs. unfold surfactant_indicated_dec, surfactant_indicated,
+      rescue_indicated.
+    rewrite Bool.orb_true_iff, Bool.andb_true_iff.
+    rewrite prophylactic_indicated_reflect, fio2_elevated_reflect,
+      clinical_rds_reflect.
+    reflexivity.
+  Qed.
+
   (** Decidable prophylactic recommendation. *)
-  Definition prophylactic_rec_dec (ga : gestational_age)
+  Definition prophylactic_rec_dec (p : Patient)
                                   (support : RespiratorySupport)
                                   (mins : minutes_since_birth)
                                   (c : Contraindications) : bool :=
-    prophylactic_eligible_dec ga &&
+    prophylactic_indicated_dec p &&
     match support with Intubated => true | _ => false end &&
     within_timing_window_dec mins &&
     no_contraindications_dec c.
 
+  Lemma prophylactic_rec_reflect : forall cs,
+    prophylactic_rec_dec (cs_patient cs)
+                         (cs_current_support cs)
+                         (cs_minutes_since_birth cs)
+                         (cs_contraindications cs) = true <->
+    prophylactic_recommendation cs.
+  Proof.
+    intros cs. unfold prophylactic_rec_dec, prophylactic_recommendation.
+    repeat rewrite Bool.andb_true_iff.
+    rewrite prophylactic_indicated_reflect, within_timing_window_reflect,
+      no_contraindications_reflect.
+    destruct (cs_current_support cs); simpl; intuition discriminate.
+  Qed.
+
   (** Decidable blood gas supports surfactant. *)
   Definition blood_gas_supports_dec (bg : BloodGas) : bool :=
     (ph bg <? ph_critical_low) || (pco2_critical_high <? pco2 bg).
+
+  Lemma blood_gas_supports_reflect : forall bg,
+    blood_gas_supports_dec bg = true <-> blood_gas_supports_surfactant bg.
+  Proof.
+    intros bg. unfold blood_gas_supports_dec, blood_gas_supports_surfactant.
+    apply acidosis_reflect.
+  Qed.
 
   (** Decidable rescue recommendation. *)
   Definition rescue_rec_dec (fio2 : fio2_pct) (signs : RDSSigns)
@@ -1660,11 +1787,35 @@ Module SurfactantDecision.
     | RoomAir => false
     end.
 
+  Lemma rescue_rec_reflect : forall cs,
+    rescue_rec_dec (current_fio2 (cs_patient cs))
+                   (cs_signs cs)
+                   (cs_imaging cs)
+                   (cs_blood_gas cs)
+                   (cs_contraindications cs)
+                   (cs_current_support cs)
+                   (cs_cpap_trial cs) = true <->
+    rescue_recommendation cs.
+  Proof.
+    intros cs. unfold rescue_rec_dec, rescue_recommendation.
+    repeat rewrite Bool.andb_true_iff.
+    rewrite Bool.orb_true_iff.
+    rewrite fio2_elevated_reflect, clinical_rds_reflect,
+      imaging_supports_reflect, blood_gas_supports_reflect,
+      no_contraindications_reflect.
+    destruct (cs_current_support cs) eqn:Hsup.
+    - (* RoomAir *) simpl. intuition.
+    - (* CPAP *) destruct (cs_cpap_trial cs) as [trial|] eqn:Htrial.
+      + rewrite cpap_failed_reflect. tauto.
+      + simpl. intuition.
+    - (* Intubated *) simpl. tauto.
+  Qed.
+
   (** Main unified recommendation function.
       Returns true only if patient is valid AND indication criteria are met. *)
   Definition recommend_surfactant (cs : ClinicalState) : bool :=
     valid_patient_dec (cs_patient cs) &&
-    (prophylactic_rec_dec (ga_weeks (cs_patient cs))
+    (prophylactic_rec_dec (cs_patient cs)
                           (cs_current_support cs)
                           (cs_minutes_since_birth cs)
                           (cs_contraindications cs) ||
@@ -1676,63 +1827,80 @@ Module SurfactantDecision.
                     (cs_current_support cs)
                     (cs_cpap_trial cs)).
 
+  Theorem recommend_surfactant_reflect : forall cs,
+    recommend_surfactant cs = true <-> surfactant_recommendation cs.
+  Proof.
+    intros cs. unfold recommend_surfactant, surfactant_recommendation.
+    rewrite Bool.andb_true_iff, Bool.orb_true_iff.
+    rewrite valid_patient_reflect, prophylactic_rec_reflect, rescue_rec_reflect.
+    reflexivity.
+  Qed.
+
   (** ---------- RUNTIME SAFETY ----------
 
-      CRITICAL: The nat -> OCaml int extraction is UNSAFE for negative values.
-      OCaml callers MUST validate inputs before calling these functions.
+      The nat -> OCaml int extraction requires care with negative values.
+      Use recommend_surfactant_safe as the primary entry point:
 
-      Required runtime checks before calling recommend_surfactant:
-      1. All integer fields must be >= 0
-      2. ga_weeks should be in [22, 42]
-      3. birth_weight should be in [200, 6000]
-      4. current_fio2 should be in [21, 100]
+        1. Call recommend_surfactant_safe with your ClinicalState
+        2. Match on the result:
+           - InvalidInput: integer field out of expected range
+           - InvalidPatient: patient parameters clinically invalid
+           - NotIndicated: valid case, surfactant not recommended
+           - Indicated: valid case, surfactant recommended
 
-      The valid_patient_dec check will catch out-of-range values, but
-      negative values passed as OCaml int will behave unpredictably. *)
+      OCaml callers should ensure all integer fields are >= 0 before
+      constructing records. The validate_clinical_state function catches
+      out-of-range values; recommend_surfactant_safe returns InvalidInput
+      if validation fails. *)
 
-  (** Input validation result. *)
-  Inductive InputValidation : Type :=
-    | InputValid
-    | InputInvalid (field : nat).  (* Field index that failed *)
+  (** Validate integer is within bounds. In extracted OCaml, callers must
+      first check n >= 0 before passing to these functions. *)
+  Definition in_range (n min max : nat) : bool :=
+    (min <=? n) && (n <=? max).
 
-  (** Validate a single integer is non-negative and within bounds.
-      Since Coq nat is always >= 0, this is identity in Coq but serves
-      as documentation for OCaml callers. *)
-  Definition sanitize_nat (n : nat) (max : nat) : option nat :=
-    if n <=? max then Some n else None.
+  (** Validate Patient fields. *)
+  Definition validate_patient (p : Patient) : bool :=
+    in_range (ga_weeks p) 22 42 &&
+    (ga_days p <=? 6) &&
+    in_range (birth_weight p) 200 6000 &&
+    in_range (current_fio2 p) 21 100.
 
-  (** Validate patient inputs before constructing Patient record.
-      Returns None if any field is invalid. *)
-  Definition validate_patient_inputs (ga fio2 weight : nat) : option Patient :=
-    match sanitize_nat ga 42, sanitize_nat fio2 100, sanitize_nat weight 6000 with
-    | Some ga', Some fio2', Some w' =>
-        if andb (22 <=? ga') (andb (21 <=? fio2') (200 <=? w'))
-        then Some (mkPatient ga' w' 0 fio2')
-        else None
-    | _, _, _ => None
+  (** Validate BloodGas fields (pH scaled, pCO2, pO2 all reasonable). *)
+  Definition validate_blood_gas (bg : BloodGas) : bool :=
+    in_range (ph bg) 6800 7800 &&
+    in_range (pco2 bg) 10 150 &&
+    in_range (po2 bg) 10 500.
+
+  (** Validate CPAPTrialState fields. *)
+  Definition validate_cpap_trial (trial : CPAPTrialState) : bool :=
+    in_range (cpap_pressure_cmh2o trial) 0 20 &&
+    in_range (fio2_on_cpap trial) 21 100.
+
+  (** Validate complete ClinicalState. *)
+  Definition validate_clinical_state (cs : ClinicalState) : bool :=
+    validate_patient (cs_patient cs) &&
+    validate_blood_gas (cs_blood_gas cs) &&
+    in_range (cs_minutes_since_birth cs) 0 10080 &&  (* up to 7 days *)
+    match cs_cpap_trial cs with
+    | None => true
+    | Some trial => validate_cpap_trial trial
     end.
 
   (** Recommendation result type for explicit validation feedback. *)
   Inductive RecommendationResult : Type :=
-    | InvalidPatient      (* Patient failed validity checks *)
+    | InvalidInput        (* Input values out of range *)
+    | InvalidPatient      (* Patient failed clinical validity checks *)
     | NotIndicated        (* Valid patient but no indication *)
     | Indicated.          (* Valid patient with indication *)
 
-  (** Safe recommendation with explicit result type. *)
+  (** Safe recommendation: validates all inputs before processing.
+      This is the PRIMARY ENTRY POINT for OCaml callers. *)
   Definition recommend_surfactant_safe (cs : ClinicalState) : RecommendationResult :=
-    if negb (valid_patient_dec (cs_patient cs)) then
+    if negb (validate_clinical_state cs) then
+      InvalidInput
+    else if negb (valid_patient_dec (cs_patient cs)) then
       InvalidPatient
-    else if orb (prophylactic_rec_dec (ga_weeks (cs_patient cs))
-                                      (cs_current_support cs)
-                                      (cs_minutes_since_birth cs)
-                                      (cs_contraindications cs))
-                (rescue_rec_dec (current_fio2 (cs_patient cs))
-                                (cs_signs cs)
-                                (cs_imaging cs)
-                                (cs_blood_gas cs)
-                                (cs_contraindications cs)
-                                (cs_current_support cs)
-                                (cs_cpap_trial cs)) then
+    else if recommend_surfactant cs then
       Indicated
     else
       NotIndicated.
