@@ -28,5 +28,10 @@ _build/
 .DS_Store
 Thumbs.db
 
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Nested repo copy
 surfactant-verified/
