@@ -738,6 +738,51 @@ Proof.
   apply Nat.leb_le in H. rewrite H in Hfalse. discriminate.
 Qed.
 
+(** Product-specific maximum single doses per package insert.
+    Survanta: 8 mL max = 200 mg phospholipids (25 mg/mL)
+    Curosurf: 2.5 mL/kg at 80 mg/mL = 200 mg/kg, max ~600 mg for 3kg infant
+    Infasurf: 3 mL/kg at 35 mg/mL = 105 mg/kg *)
+Definition max_single_dose (prod : SurfactantProduct) : nat :=
+  match prod with
+  | Survanta => 400  (* 100 mg/kg * 4 kg max practical weight *)
+  | Curosurf => 600  (* 200 mg/kg * 3 kg *)
+  | Infasurf => 420  (* 105 mg/kg * 4 kg *)
+  end.
+
+(** Per-product dose bounds for clinically appropriate weight ranges. *)
+Theorem initial_dose_bounded_survanta :
+  forall weight, weight <= 4000 ->
+    initial_dose Survanta weight <= 400.
+Proof.
+  intros weight Hmax.
+  unfold initial_dose, calculate_dose, initial_dose_per_kg.
+  apply Nat.le_trans with (4000 * 100 / 1000).
+  - apply Nat.Div0.div_le_mono. lia.
+  - apply Nat.leb_le. reflexivity.
+Qed.
+
+Theorem initial_dose_bounded_curosurf :
+  forall weight, weight <= 3000 ->
+    initial_dose Curosurf weight <= 600.
+Proof.
+  intros weight Hmax.
+  unfold initial_dose, calculate_dose, initial_dose_per_kg.
+  apply Nat.le_trans with (3000 * 200 / 1000).
+  - apply Nat.Div0.div_le_mono. lia.
+  - apply Nat.leb_le. reflexivity.
+Qed.
+
+Theorem initial_dose_bounded_infasurf :
+  forall weight, weight <= 4000 ->
+    initial_dose Infasurf weight <= 420.
+Proof.
+  intros weight Hmax.
+  unfold initial_dose, calculate_dose, initial_dose_per_kg.
+  apply Nat.le_trans with (4000 * 105 / 1000).
+  - apply Nat.Div0.div_le_mono. lia.
+  - apply Nat.leb_le. reflexivity.
+Qed.
+
 (** -------------------------------------------------------------------------- *)
 (** Repeat Dosing Logic                                                        *)
 (** -------------------------------------------------------------------------- *)
