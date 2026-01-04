@@ -36,6 +36,34 @@
        - Survanta (beractant): 100 mg phospholipids/kg, up to 4 doses
        - Curosurf (poractant alfa): 100-200 mg/kg initial, 100 mg/kg repeat
        - Infasurf (calfactant): 105 mg phospholipids/kg, up to 3 doses
+
+   [4] Verder H, Agertoft L, Albertsen P, et al.
+       "RDS-NExT Workshop: Consensus Statements for the Use of Surfactant
+       in Preterm Neonates with RDS."
+       J Perinatol. 2023;43:1112-1120.
+       doi:10.1038/s41372-023-01690-9
+
+   [5] Defined by Network Meta-analysis.
+       "Clinical Decision Thresholds for Surfactant Administration in
+       Preterm Infants: A Systematic Review and Network Meta-analysis."
+       eClinicalMedicine. 2023;62:102097.
+       doi:10.1016/j.eclinm.2023.102097
+
+   [6] Walsh BK, Daigle B, DiBlasi RM, Restrepo RD.
+       "AARC Clinical Practice Guideline: Surfactant Replacement Therapy."
+       Respir Care. 2013;58(2):367-375.
+       doi:10.4187/respcare.02189
+
+   [7] Canadian Paediatric Society, Fetus and Newborn Committee.
+       "Guidelines for Surfactant Replacement Therapy in Neonates."
+       Paediatr Child Health. 2021;26(1):35-41.
+       doi:10.1093/pch/pxaa116
+
+   [8] Protocure Project (Formal Methods for Medical Protocols):
+       - Marcos M, et al. "Verification of Medical Guidelines in KIV."
+         AI Commun. 2006;19(3):219-232.
+       - Ten Teije A, et al. "From Informal Knowledge to Formal Logic."
+         EKAW 2002, LNAI 2473, pp. 95-110.
 *)
 
 (** -------------------------------------------------------------------------- *)
@@ -43,8 +71,36 @@
 (** -------------------------------------------------------------------------- *)
 
 (**
-   Validation: OCaml extraction provided but not yet tested against
-     actual NICU case records. EXERCISED status pending external validation.
+   STATUS: STABLE (compiles, no admits, key theorems proven)
+   TARGET: EXERCISED (requires external validation)
+
+   TODO:
+   1.  Parameterize FiO2 threshold (currently fixed at 30%; meta-analysis [5]
+       suggests 40% for >26w; Canadian guidelines [7] use 50%)
+   2.  Add threshold configurations per gestational age strata
+   3.  Prove threshold monotonicity (higher threshold → fewer indications)
+   4.  Add timed automata model for UPPAAL cross-validation
+   5.  Add temporal assertions: "surfactant within 2h of RDS onset"
+   6.  Model time-to-response assessment intervals
+   7.  Integrate SpO2/SF ratio into decision logic (currently excluded)
+   8.  Add OI-based escalation pathway
+   9.  Add volume calculation: mg → mL (Curosurf 80, Survanta 25, Infasurf 35)
+   10. Add optional CPAP duration gate for local protocols
+   11. Consider lamellar body count as biomarker [5]
+   12. Fix integer truncation in dose calc (849g × 100mg/kg = 84mg, loses 0.9)
+   13. Add dose_in_mL extraction for nursing administration
+   14. Prove calculated dose never exceeds product vial size
+   15. Add OCaml unit test suite (currently 0 tests)
+   16. Test edge cases: weight 200g/6000g, GA 22+0/42+0
+   17. Fuzz testing: random valid ClinicalState generation
+   18. Integration test: wrap in REST API
+   19. Obtain anonymized NICU case records (n >= 50) for validation
+   20. Run recommend_surfactant_safe against historical decisions
+   21. Measure concordance rate with attending neonatologist decisions
+   22. Document false positives/negatives vs. clinician decisions
+   23. Export decision logic to Promela for SPIN model checking
+   24. Export to UPPAAL timed automata for temporal verification
+   25. Cross-validate: same test cases, same verdicts across tools
 *)
 
 From Coq Require Import Arith Lia.
