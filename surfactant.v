@@ -79,7 +79,6 @@
    2.  Run recommend_surfactant_safe against historical decisions
    3.  Measure concordance rate with attending neonatologist decisions
    4.  Document false positives/negatives vs. clinician decisions
-   5.  Cross-validate: same test cases, same verdicts across tools
 *)
 
 From Coq Require Import Arith Lia List.

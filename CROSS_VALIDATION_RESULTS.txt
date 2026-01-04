@@ -1,0 +1,98 @@
+CROSS-VALIDATION RESULTS
+========================
+Date: 2026-01-04
+
+Implementations Tested:
+- OCaml (extracted from Coq via surfactant_cli.exe)
+- Manual property checker (Python reference implementation)
+- SPIN model (verified via LTL properties)
+
+TEST CASES
+==========
+
+TC01: Preterm with RDS - Indicated
+  Input:  GA=27+0 (189d), FiO2=45%, 2 signs, no contra, CPAP
+  Result: Indicated
+  OCaml:  PASS | Manual: PASS
+
+TC02: Well infant - Not Indicated
+  Input:  GA=34+0 (238d), FiO2=21%, 0 signs, no contra
+  Result: NotIndicated
+  OCaml:  PASS | Manual: PASS
+
+TC03: Contraindication (CDH) - Blocks
+  Input:  GA=27+0 (189d), FiO2=50%, 3 signs, CDH=true
+  Result: NotIndicated
+  OCaml:  PASS | Manual: PASS
+
+TC04: Prophylactic eligible - 26w intubated
+  Input:  GA=26+0 (182d), FiO2=40%, 0 signs, intubated, 5min
+  Result: Indicated
+  OCaml:  PASS | Manual: PASS
+
+TC05: Boundary 29+6w - Prophylactic eligible
+  Input:  GA=29+6 (209d), FiO2=30%, intubated, 5min
+  Result: Indicated (209 < 210)
+  OCaml:  PASS | Manual: PASS
+
+TC06: Boundary 30+0w - NOT Prophylactic
+  Input:  GA=30+0 (210d), FiO2=25%, intubated, 5min
+  Result: NotIndicated (210 >= 210)
+  OCaml:  PASS | Manual: PASS
+
+TC07: FiO2 boundary 30% - Not rescue
+  Input:  GA=32+0 (224d), FiO2=30%, 2 signs, CPAP
+  Result: NotIndicated (30 <= 30)
+  OCaml:  PASS | Manual: PASS
+
+TC08: FiO2 boundary 31% - Rescue eligible
+  Input:  GA=32+0 (224d), FiO2=31%, 2 signs, CPAP
+  Result: Indicated (31 > 30)
+  OCaml:  PASS | Manual: PASS
+
+TC09: Only 1 sign - Not enough
+  Input:  GA=32+0 (224d), FiO2=50%, 1 sign, CPAP
+  Result: NotIndicated (need >= 2 signs)
+  OCaml:  PASS | Manual: PASS
+
+TC10: Dose - Survanta 1000g
+  Input:  GA=28+0, weight=1000g, Survanta
+  Result: Indicated, 100mg
+  OCaml:  PASS | Manual: PASS
+
+TC11: Dose - Curosurf 900g
+  Input:  GA=27+0, weight=900g, Curosurf
+  Result: Indicated, 180mg
+  OCaml:  PASS | Manual: PASS
+
+TC12: Multiple contraindications
+  Input:  GA=26+0, FiO2=60%, 4 signs, lethal_anomaly + pneumothorax
+  Result: NotIndicated
+  OCaml:  PASS | Manual: PASS
+
+SUMMARY
+=======
+Total:  12
+Passed: 12
+Failed: 0
+
+All implementations produce identical results for all test cases.
+
+BOUNDARY CONDITIONS VERIFIED
+============================
+- GA threshold: 29+6w (209d) -> Indicated, 30+0w (210d) -> NotIndicated
+- FiO2 threshold: 30% -> NotIndicated, 31% -> Indicated
+- Sign count: 1 sign -> NotIndicated, 2 signs -> Indicated
+- Contraindication: Any true -> NotIndicated regardless of other criteria
+
+DOSE CALCULATIONS VERIFIED
+==========================
+- Survanta: 100mg/kg -> 1000g = 100mg
+- Curosurf: 200mg/kg -> 900g = 180mg
+- Rounding: (weight * dose_per_kg + 500) / 1000
+
+CONCLUSION
+==========
+Cross-validation successful. The OCaml extraction from Coq produces
+results identical to the reference implementation and consistent with
+the SPIN-verified properties.
