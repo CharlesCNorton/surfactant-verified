@@ -43,6 +43,8 @@ val add : int -> int -> int
 
 val mul : int -> int -> int
 
+val sub : int -> int -> int
+
 val tail_add : int -> int -> int
 
 val tail_addmul : int -> int -> int -> int
@@ -86,6 +88,10 @@ type patient = { ga_weeks : gestational_age; ga_days : ga_days_t;
 
 val ga_total_days : patient -> int
 
+val prophylactic_ga_threshold_weeks : int
+
+val prophylactic_ga_threshold_days : int
+
 type rDSSigns = { grunting : bool; retractions : bool; nasal_flaring : 
                   bool; cyanosis_in_room_air : bool }
 
@@ -96,6 +102,8 @@ type contraindications = { congenital_diaphragmatic_hernia : bool;
                            pulmonary_hypoplasia : bool;
                            active_pulmonary_hemorrhage : bool;
                            pneumothorax_untreated : bool }
+
+val fio2_threshold_30 : int
 
 val fio2_threshold : int
 
@@ -150,6 +158,14 @@ val initial_dose : surfactantProduct -> weight_g -> int
 
 val repeat_dose : surfactantProduct -> weight_g -> int
 
+val concentration_mg_per_ml : surfactantProduct -> int
+
+val max_vial_mg : surfactantProduct -> int
+
+val dose_volume_ml_x10 : surfactantProduct -> int -> int
+
+val vials_needed : surfactantProduct -> int -> int
+
 type clinicalState = { cs_patient : patient; cs_signs : rDSSigns;
                        cs_contraindications : contraindications;
                        cs_imaging : imagingEvidence; cs_blood_gas : bloodGas;
@@ -170,6 +186,10 @@ module SurfactantDecision :
   val calc_initial_dose : surfactantProduct -> weight_g -> int
 
   val calc_repeat_dose : surfactantProduct -> weight_g -> int
+
+  val calc_volume_ml_x10 : surfactantProduct -> int -> int
+
+  val calc_vials_needed : surfactantProduct -> int -> int
 
   val cpap_failed_dec : int -> fio2_pct -> bool
 

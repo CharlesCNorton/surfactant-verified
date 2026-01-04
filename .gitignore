@@ -16,6 +16,7 @@
 *.cmxa
 *.o
 *.a
+*.exe
 _build/
 
 # Editor files

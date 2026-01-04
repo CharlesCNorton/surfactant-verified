@@ -51,6 +51,10 @@ let rec add = (+)
 
 let rec mul = ( * )
 
+(** val sub : int -> int -> int **)
+
+let rec sub = fun n m -> Stdlib.max 0 (n-m)
+
 (** val tail_add : int -> int -> int **)
 
 let rec tail_add n m =
@@ -257,6 +261,19 @@ let ga_total_days p =
   add (mul p.ga_weeks (succ (succ (succ (succ (succ (succ (succ 0))))))))
     p.ga_days
 
+(** val prophylactic_ga_threshold_weeks : int **)
+
+let prophylactic_ga_threshold_weeks =
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ 0)))))))))))))))))))))))))))))
+
+(** val prophylactic_ga_threshold_days : int **)
+
+let prophylactic_ga_threshold_days =
+  mul prophylactic_ga_threshold_weeks (succ (succ (succ (succ (succ (succ
+    (succ 0)))))))
+
 type rDSSigns = { grunting : bool; retractions : bool; nasal_flaring : 
                   bool; cyanosis_in_room_air : bool }
 
@@ -276,12 +293,17 @@ type contraindications = { congenital_diaphragmatic_hernia : bool;
                            active_pulmonary_hemorrhage : bool;
                            pneumothorax_untreated : bool }
 
-(** val fio2_threshold : int **)
+(** val fio2_threshold_30 : int **)
 
-let fio2_threshold =
+let fio2_threshold_30 =
   succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
     (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
     (succ (succ (succ (succ (succ (succ 0)))))))))))))))))))))))))))))
+
+(** val fio2_threshold : int **)
+
+let fio2_threshold =
+  fio2_threshold_30
 
 type respiratorySupport =
 | RoomAir
@@ -416,7 +438,51 @@ let repeat_dose_per_kg = function
 (** val calculate_dose : int -> int -> int **)
 
 let calculate_dose weight_g0 dose_per_kg =
-  Nat.div (mul weight_g0 dose_per_kg) (succ (succ (succ (succ (succ (succ
+  Nat.div
+    (add (mul weight_g0 dose_per_kg) (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      (succ (succ
+      0)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
     (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
     (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
     (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
@@ -499,7 +565,8 @@ let calculate_dose weight_g0 dose_per_kg =
     (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
     (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
     (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ
     0))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
 
 (** val initial_dose : surfactantProduct -> weight_g -> int **)
@@ -511,6 +578,105 @@ let initial_dose prod0 weight =
 
 let repeat_dose prod0 weight =
   calculate_dose weight (repeat_dose_per_kg prod0)
+
+(** val concentration_mg_per_ml : surfactantProduct -> int **)
+
+let concentration_mg_per_ml = function
+| Survanta ->
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ 0))))))))))))))))))))))))
+| Curosurf ->
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ
+    0)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+| Infasurf ->
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    0))))))))))))))))))))))))))))))))))
+
+(** val max_vial_mg : surfactantProduct -> int **)
+
+let max_vial_mg = function
+| Survanta ->
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ
+    0)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+| Curosurf ->
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    0)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+| Infasurf ->
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ
+    0)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+
+(** val dose_volume_ml_x10 : surfactantProduct -> int -> int **)
+
+let dose_volume_ml_x10 prod0 dose_mg =
+  Nat.div
+    (mul dose_mg (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+      0))))))))))) (concentration_mg_per_ml prod0)
+
+(** val vials_needed : surfactantProduct -> int -> int **)
+
+let vials_needed prod0 dose_mg =
+  Nat.div (sub (add dose_mg (max_vial_mg prod0)) (succ 0)) (max_vial_mg prod0)
 
 type clinicalState = { cs_patient : patient; cs_signs : rDSSigns;
                        cs_contraindications : contraindications;
@@ -534,25 +700,7 @@ module SurfactantDecision =
   (** val prophylactic_indicated_dec : patient -> bool **)
 
   let prophylactic_indicated_dec p =
-    Nat.ltb (ga_total_days p) (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-      0))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+    Nat.ltb (ga_total_days p) prophylactic_ga_threshold_days
 
   (** val clinical_rds_dec : rDSSigns -> bool **)
 
@@ -568,6 +716,16 @@ module SurfactantDecision =
 
   let calc_repeat_dose =
     repeat_dose
+
+  (** val calc_volume_ml_x10 : surfactantProduct -> int -> int **)
+
+  let calc_volume_ml_x10 =
+    dose_volume_ml_x10
+
+  (** val calc_vials_needed : surfactantProduct -> int -> int **)
+
+  let calc_vials_needed =
+    vials_needed
 
   (** val cpap_failed_dec : int -> fio2_pct -> bool **)
 
@@ -763,16 +921,38 @@ module SurfactantDecision =
     (&&)
       ((&&)
         ((&&)
-          (in_range p.ga_weeks (succ (succ (succ (succ (succ (succ (succ
+          ((&&)
+            (in_range p.ga_weeks (succ (succ (succ (succ (succ (succ (succ
+              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+              (succ (succ (succ (succ (succ 0)))))))))))))))))))))) (succ
+              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+              (succ 0)))))))))))))))))))))))))))))))))))))))))))
+            (in_range p.ga_days 0 (succ (succ (succ (succ (succ (succ 0))))))))
+          (in_range p.birth_weight (succ (succ (succ (succ (succ (succ (succ
             (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-            (succ (succ (succ (succ 0)))))))))))))))))))))) (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
             (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
             (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
             (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
             (succ (succ (succ (succ (succ (succ
-            0)))))))))))))))))))))))))))))))))))))))))))
-          (Nat.leb p.ga_days (succ (succ (succ (succ (succ (succ 0))))))))
-        (in_range p.birth_weight (succ (succ (succ (succ (succ (succ (succ
+            0))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+            (of_num_uint (UIntDecimal (D6 (D0 (D0 (D0 Nil))))))))
+        (in_range p.age_hours 0 (succ (succ (succ (succ (succ (succ (succ
           (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
           (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
           (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
@@ -787,12 +967,8 @@ module SurfactantDecision =
           (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
           (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
           (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-          (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-          (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-          (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-          (succ (succ (succ (succ (succ (succ
-          0))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-          (of_num_uint (UIntDecimal (D6 (D0 (D0 (D0 Nil))))))))
+          (succ (succ (succ (succ (succ (succ (succ
+          0))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
       (in_range p.current_fio2 (succ (succ (succ (succ (succ (succ (succ
         (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
         (succ (succ (succ 0))))))))))))))))))))) (succ (succ (succ (succ
@@ -883,9 +1059,12 @@ module SurfactantDecision =
 
   let validate_cpap_trial trial =
     (&&)
-      (in_range trial.cpap_pressure_cmh2o 0 (succ (succ (succ (succ (succ
-        (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-        (succ (succ (succ (succ 0)))))))))))))))))))))
+      ((&&)
+        (in_range trial.cpap_pressure_cmh2o 0 (succ (succ (succ (succ (succ
+          (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+          (succ (succ (succ (succ 0)))))))))))))))))))))
+        (in_range trial.cpap_duration_minutes 0
+          (of_num_uint (UIntDecimal (D1 (D0 (D0 (D8 (D0 Nil)))))))))
       (in_range trial.fio2_on_cpap (succ (succ (succ (succ (succ (succ (succ
         (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
         (succ (succ (succ 0))))))))))))))))))))) (succ (succ (succ (succ
