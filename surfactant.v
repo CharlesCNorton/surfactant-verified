@@ -274,9 +274,10 @@ Qed.
 (** Oxygen saturation as percentage (0-100). *)
 Definition spo2_pct := nat.
 
-(** Target SpO2 range for preterm infants per SUPPORT/COT trials. *)
-Definition spo2_target_low : nat := 88.
-Definition spo2_target_high : nat := 95.
+(** Target SpO2 range for preterm infants per European Consensus 2022.
+    Target 90-94% with alarm limits at 89% and 95%. *)
+Definition spo2_target_low : nat := 90.
+Definition spo2_target_high : nat := 94.
 
 (** SpO2 is within target range. *)
 Definition spo2_in_target (s : spo2_pct) : Prop :=
