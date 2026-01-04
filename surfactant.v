@@ -593,18 +593,26 @@ Qed.
 (** Note: The strict version (< 26) is used per guidelines. *)
 
 (** -------------------------------------------------------------------------- *)
-(** Indication Logic                                                           *)
+(** Indication Logic (Core Criteria)                                           *)
 (** -------------------------------------------------------------------------- *)
 
-(** Prophylactic indication: GA < 26 weeks, given in delivery room. *)
+(** NOTE: These predicates capture the CORE indication criteria only.
+    For complete clinical decision-making, use surfactant_recommendation
+    which integrates timing, contraindications, CXR, and CPAP context. *)
+
+(** Prophylactic indication (core): GA < 26 weeks.
+    Full prophylactic recommendation also requires timing window. *)
 Definition prophylactic_indicated (p : Patient) : Prop :=
   prophylactic_eligible_ga (ga_weeks p).
 
-(** Rescue indication: FiO2 elevated AND clinical signs present. *)
+(** Rescue indication (core): FiO2 elevated AND clinical signs present.
+    Full rescue recommendation also requires CXR consistency and CPAP context. *)
 Definition rescue_indicated (p : Patient) (signs : RDSSigns) : Prop :=
   fio2_elevated (current_fio2 p) /\ clinical_rds signs.
 
-(** Combined indication: prophylactic OR rescue. *)
+(** Combined indication (core): prophylactic OR rescue.
+    For clinical use, prefer surfactant_recommendation which enforces
+    additional safety checks (contraindications, timing, CPAP trial). *)
 Definition surfactant_indicated (p : Patient) (signs : RDSSigns) : Prop :=
   prophylactic_indicated p \/ rescue_indicated p signs.
 
@@ -848,8 +856,20 @@ Proof.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
-(** Integrated Clinical Decision                                               *)
+(** Integrated Clinical Decision (PRIMARY DECISION PREDICATE)                  *)
 (** -------------------------------------------------------------------------- *)
+
+(** THIS IS THE PRIMARY DECISION PREDICATE for clinical use.
+    Unlike the core indication predicates (surfactant_indicated), this
+    integrates all clinically relevant factors:
+    - Patient validity (physiological bounds)
+    - Contraindication screening
+    - Timing constraints (prophylactic window)
+    - CXR consistency (rescue pathway)
+    - CPAP trial context (rescue pathway)
+
+    Use surfactant_recommendation for actual clinical decision support.
+    Use recommend_surfactant in extraction for runtime decisions. *)
 
 (** Complete clinical state for surfactant decision. *)
 Record ClinicalState := mkClinicalState {
