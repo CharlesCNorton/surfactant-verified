@@ -64,6 +64,52 @@
          AI Commun. 2006;19(3):219-232.
        - Ten Teije A, et al. "From Informal Knowledge to Formal Logic."
          EKAW 2002, LNAI 2473, pp. 95-110.
+
+   [9] Thome UH, Genzel-Boroviczeny O, Bohnhorst B, et al.
+       "Permissive Hypercapnia in Extremely Low Birthweight Infants (PHELBI):
+       A Randomised Controlled Multicentre Trial."
+       Lancet Respir Med. 2015;3(7):534-543.
+       doi:10.1016/S2213-2600(15)00204-0
+
+   [10] Woodgate PG, Davies MW.
+        "Permissive Hypercapnia for the Prevention of Morbidity and Mortality
+        in Mechanically Ventilated Newborn Infants."
+        Cochrane Database Syst Rev. 2001;(2):CD002061.
+        doi:10.1002/14651858.CD002061.pub2
+
+   [11] Luong K, Bhombal S, et al.
+        "Carbon Dioxide Levels in Neonates: What Are Safe Parameters?"
+        Pediatr Res. 2022;91(6):1372-1378.
+        doi:10.1038/s41390-021-01473-y
+
+   [12] Klotz D, Porcaro U, Fleck T, Fuchs H.
+        "European Perspective on Less Invasive Surfactant Administration:
+        Chances and Limitations."
+        Neonatology. 2017;111(4):345-349.
+        doi:10.1159/000454966
+
+   [13] Kribs A, Roll C, Gopel W, et al.
+        "Less Invasive Surfactant Administration: Best Practices and
+        Unanswered Questions."
+        Arch Dis Child Fetal Neonatal Ed. 2020;105(6):606-611.
+        doi:10.1136/archdischild-2019-318551
+
+   [14] Herting E, Kribs A, Hartel C, et al.
+        "Introducing Less-Invasive Surfactant Administration into a Level IV
+        NICU: A Quality Improvement Initiative."
+        Am J Perinatol. 2022;39(Suppl 1):e247-e253.
+        doi:10.1055/s-0041-1731278
+
+   [15] Boel L, Banerjee S, Clark R, et al.
+        "Association of Administration of Surfactant Using Less Invasive
+        Methods With Outcomes in Extremely Preterm Infants <27 Weeks."
+        JAMA Netw Open. 2022;5(8):e2219211.
+        doi:10.1001/jamanetworkopen.2022.19211
+
+   [16] FDA Product Labels:
+        - Survanta (beractant): NDA 020032
+        - Infasurf (calfactant): NDA 020521
+        - Curosurf (poractant alfa): NDA 020744
 *)
 
 (** -------------------------------------------------------------------------- *)
