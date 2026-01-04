@@ -317,12 +317,38 @@ Proof.
   unfold oxygenation_failure, fio2_elevated, fio2_threshold. lia.
 Qed.
 
+(** SpO2/FiO2 ratio (SF ratio) as oxygenation metric.
+    SF ratio approximates PaO2/FiO2 (P/F ratio) noninvasively.
+    SF < 264 approximates P/F < 200 (ARDS threshold).
+    Calculated as SpO2 * 100 / FiO2 to preserve integer arithmetic. *)
+Definition sf_ratio (spo2 : spo2_pct) (fio2 : fio2_pct) : nat :=
+  spo2 * 100 / fio2.
+
+(** SF ratio threshold indicating significant oxygenation impairment. *)
+Definition sf_threshold : nat := 264.
+
+(** SF ratio below threshold suggests surfactant need. *)
+Definition sf_impaired (spo2 : spo2_pct) (fio2 : fio2_pct) : Prop :=
+  sf_ratio spo2 fio2 < sf_threshold.
+
+(** --- Witness: SpO2 88% on FiO2 50% → SF 176 (impaired) --- *)
+Lemma sf_impaired_example : sf_impaired 88 50.
+Proof.
+  unfold sf_impaired, sf_ratio, sf_threshold. simpl. lia.
+Qed.
+
+(** --- Counterexample: SpO2 92% on FiO2 30% → SF 306 (adequate) --- *)
+Lemma sf_adequate_example : ~ sf_impaired 92 30.
+Proof.
+  unfold sf_impaired, sf_ratio, sf_threshold. simpl. lia.
+Qed.
+
 (** -------------------------------------------------------------------------- *)
 (** Blood Gas Integration                                                      *)
 (** -------------------------------------------------------------------------- *)
 
-(** Blood gas values. pH scaled by 100 (720 = 7.20), pCO2 in mmHg. *)
-Definition ph_scaled := nat.   (* pH * 100, so 7.35 = 735 *)
+(** Blood gas values. pH scaled by 1000 (7200 = 7.20), pCO2 in mmHg. *)
+Definition ph_scaled := nat.   (* pH * 1000, so 7.35 = 7350 *)
 Definition pco2_mmhg := nat.
 
 (** Arterial blood gas record. *)
@@ -333,7 +359,7 @@ Record BloodGas := mkBloodGas {
 }.
 
 (** Respiratory acidosis thresholds. *)
-Definition ph_critical_low : nat := 720.    (* pH < 7.20 *)
+Definition ph_critical_low : nat := 7200.   (* pH < 7.20 *)
 Definition pco2_critical_high : nat := 60.  (* pCO2 > 60 mmHg *)
 
 (** Severe respiratory acidosis indicating ventilatory failure. *)
@@ -345,21 +371,53 @@ Definition blood_gas_supports_surfactant (bg : BloodGas) : Prop :=
   respiratory_acidosis bg.
 
 (** --- Witness: pH 7.15, pCO2 65 → respiratory acidosis --- *)
-Definition acidotic_gas : BloodGas := mkBloodGas 715 65 55.
+Definition acidotic_gas : BloodGas := mkBloodGas 7150 65 55.
 
 Lemma acidotic_gas_supports_surfactant : blood_gas_supports_surfactant acidotic_gas.
 Proof.
   unfold blood_gas_supports_surfactant, respiratory_acidosis, acidotic_gas,
-         ph_critical_low, pco2_critical_high. simpl. left. lia.
+         ph_critical_low, pco2_critical_high. simpl. left.
+  apply Nat.ltb_lt. reflexivity.
 Qed.
 
 (** --- Counterexample: pH 7.35, pCO2 45 → normal gas --- *)
-Definition normal_gas : BloodGas := mkBloodGas 735 45 80.
+Definition normal_gas : BloodGas := mkBloodGas 7350 45 80.
 
 Lemma normal_gas_no_acidosis : ~ respiratory_acidosis normal_gas.
 Proof.
   unfold respiratory_acidosis, normal_gas, ph_critical_low, pco2_critical_high.
-  simpl. lia.
+  simpl. intros [H | H]; apply Nat.ltb_ge in H; discriminate.
+Qed.
+
+(** Mean airway pressure in cmH2O. *)
+Definition map_cmh2o := nat.
+
+(** Oxygenation index: OI = (FiO2 × MAP) / PaO2.
+    Since FiO2 is already percentage (not fraction), no ×100 needed.
+    Integrates oxygen requirement with ventilator support intensity.
+    OI > 15 indicates severe hypoxemic respiratory failure.
+    OI > 25 may prompt ECMO consideration. *)
+Definition oxygenation_index (fio2 : fio2_pct) (map : map_cmh2o) (pao2 : nat) : nat :=
+  fio2 * map / pao2.
+
+(** OI thresholds for severity classification. *)
+Definition oi_severe : nat := 15.
+Definition oi_critical : nat := 25.
+
+(** Severe oxygenation failure by OI. *)
+Definition oi_indicates_severe (fio2 : fio2_pct) (map : map_cmh2o) (pao2 : nat) : Prop :=
+  oxygenation_index fio2 map pao2 > oi_severe.
+
+(** --- Witness: FiO2 60%, MAP 12, PaO2 45 → OI 16 (severe) --- *)
+Lemma oi_severe_example : oi_indicates_severe 60 12 45.
+Proof.
+  unfold oi_indicates_severe, oxygenation_index, oi_severe. simpl. lia.
+Qed.
+
+(** --- Counterexample: FiO2 40%, MAP 8, PaO2 70 → OI 4 (not severe) --- *)
+Lemma oi_not_severe_example : ~ oi_indicates_severe 40 8 70.
+Proof.
+  unfold oi_indicates_severe, oxygenation_index, oi_severe. simpl. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -413,6 +471,72 @@ Proof.
   intros [H | [H _]]; discriminate.
 Qed.
 
+(** Lung ultrasound findings per European Consensus 2022.
+    Ultrasound is increasingly used as alternative to CXR. *)
+Record LungUltrasound := mkLungUltrasound {
+  bilateral_white_lung : bool;       (* Confluent B-lines, "white lung" *)
+  absent_a_lines : bool;             (* Loss of normal pleural lines *)
+  pleural_irregularity : bool;       (* Thickened/irregular pleura *)
+  consolidations : bool              (* Subpleural consolidations *)
+}.
+
+(** Ultrasound consistent with RDS: white lung OR consolidations with pleural changes. *)
+Definition ultrasound_consistent_with_rds (us : LungUltrasound) : Prop :=
+  bilateral_white_lung us = true \/
+  (consolidations us = true /\ pleural_irregularity us = true).
+
+(** --- Witness: Classic RDS ultrasound --- *)
+Definition rds_ultrasound : LungUltrasound :=
+  mkLungUltrasound true true true false.
+
+Lemma rds_ultrasound_consistent : ultrasound_consistent_with_rds rds_ultrasound.
+Proof.
+  unfold ultrasound_consistent_with_rds, rds_ultrasound. simpl.
+  left. reflexivity.
+Qed.
+
+(** Imaging evidence for RDS: CXR OR ultrasound OR clinical judgement.
+    Per European Consensus 2022, imaging is supportive but not required
+    when clinical presentation is clear. *)
+Record ImagingEvidence := mkImagingEvidence {
+  ie_cxr : option ChestXRay;
+  ie_ultrasound : option LungUltrasound;
+  ie_clinical_judgement : bool  (* Experienced clinician diagnosis without imaging *)
+}.
+
+(** Imaging supports RDS diagnosis. *)
+Definition imaging_supports_rds (ie : ImagingEvidence) : Prop :=
+  match ie_cxr ie with
+  | Some cxr => cxr_consistent_with_rds cxr
+  | None => False
+  end \/
+  match ie_ultrasound ie with
+  | Some us => ultrasound_consistent_with_rds us
+  | None => False
+  end \/
+  ie_clinical_judgement ie = true.
+
+(** --- Witness: CXR-based evidence --- *)
+Definition cxr_evidence : ImagingEvidence :=
+  mkImagingEvidence (Some classic_rds_cxr) None false.
+
+Lemma cxr_evidence_supports : imaging_supports_rds cxr_evidence.
+Proof.
+  unfold imaging_supports_rds, cxr_evidence. simpl.
+  left. unfold cxr_consistent_with_rds, classic_rds_cxr. simpl.
+  left. reflexivity.
+Qed.
+
+(** --- Witness: Clinical judgement alone --- *)
+Definition clinical_evidence : ImagingEvidence :=
+  mkImagingEvidence None None true.
+
+Lemma clinical_evidence_supports : imaging_supports_rds clinical_evidence.
+Proof.
+  unfold imaging_supports_rds, clinical_evidence. simpl.
+  right. right. reflexivity.
+Qed.
+
 (** -------------------------------------------------------------------------- *)
 (** Delivery Room Timing                                                       *)
 (** -------------------------------------------------------------------------- *)
@@ -420,40 +544,41 @@ Qed.
 (** Time since birth in minutes. *)
 Definition minutes_since_birth := nat.
 
-(** Prophylactic surfactant window: within 15 minutes of birth. *)
+(** Prophylactic surfactant window (conservative default): within 15 minutes.
+    Product-specific timing: Survanta 15 min, Infasurf 30 min.
+    See prophylactic_window_for_product for product-specific version. *)
 Definition prophylactic_window_minutes : nat := 15.
 
 (** Within the prophylactic administration window. *)
 Definition within_prophylactic_window (mins : minutes_since_birth) : Prop :=
   mins <= prophylactic_window_minutes.
 
-(** Prophylactic timing valid: must be given early. *)
-Definition prophylactic_timing_valid (mins : minutes_since_birth) : Prop :=
-  within_prophylactic_window mins.
-
 (** --- Witness: 10 minutes post-birth is within window --- *)
-Lemma timing_10min_valid : prophylactic_timing_valid 10.
+Lemma timing_10min_valid : within_prophylactic_window 10.
 Proof.
-  unfold prophylactic_timing_valid, within_prophylactic_window,
-         prophylactic_window_minutes. lia.
+  unfold within_prophylactic_window, prophylactic_window_minutes. lia.
 Qed.
 
-(** --- Counterexample: 30 minutes post-birth is outside window --- *)
-Lemma timing_30min_invalid : ~ prophylactic_timing_valid 30.
+(** --- Counterexample: 20 minutes post-birth exceeds conservative window --- *)
+Lemma timing_20min_invalid : ~ within_prophylactic_window 20.
 Proof.
-  unfold prophylactic_timing_valid, within_prophylactic_window,
-         prophylactic_window_minutes. lia.
+  unfold within_prophylactic_window, prophylactic_window_minutes. lia.
 Qed.
 
-(** Prophylactic administration requires both GA eligibility AND timing. *)
-Definition prophylactic_complete (ga : gestational_age) (mins : minutes_since_birth) : Prop :=
-  ga < 26 /\ within_prophylactic_window mins.
+(** Prophylactic administration requires GA eligibility, timing, AND intubation.
+    GA threshold is 30 weeks per European Consensus 2022. *)
+Definition prophylactic_complete (ga : gestational_age) (mins : minutes_since_birth)
+                                 (support : RespiratorySupport) : Prop :=
+  ga < 30 /\
+  within_prophylactic_window mins /\
+  support = Intubated.
 
-(** --- Witness: 24w infant at 5 minutes → full prophylactic criteria met --- *)
-Lemma prophylactic_complete_example : prophylactic_complete 24 5.
+(** --- Witness: 28w infant at 5 minutes, intubated → prophylactic criteria met --- *)
+Lemma prophylactic_complete_example : prophylactic_complete 28 5 Intubated.
 Proof.
   unfold prophylactic_complete, within_prophylactic_window,
-         prophylactic_window_minutes. lia.
+         prophylactic_window_minutes. simpl.
+  repeat split; try lia; try reflexivity.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -514,8 +639,9 @@ Proof. reflexivity. Qed.
 (** Gestational Age Thresholds                                                 *)
 (** -------------------------------------------------------------------------- *)
 
-(** Prophylactic surfactant threshold: < 26 weeks per European Consensus. *)
-Definition prophylactic_ga_threshold : nat := 26.
+(** Prophylactic surfactant threshold: < 30 weeks per European Consensus 2022.
+    Guideline: preterm infant <30 weeks requiring intubation for stabilization. *)
+Definition prophylactic_ga_threshold : nat := 30.
 
 (** Eligible for prophylactic surfactant based on GA alone. *)
 Definition prophylactic_eligible_ga (ga : gestational_age) : Prop :=
@@ -539,18 +665,19 @@ Qed.
 
 (** BOUNDARY DOCUMENTATION:
     This formalization uses STRICT inequalities for thresholds:
-    - Prophylactic GA: < 26 weeks (NOT <=)
+    - Prophylactic GA: < 30 weeks (NOT <=)
     - FiO2 elevated: > 30% (NOT >=)
 
     Clinical interpretation:
-    - GA exactly 26+0 weeks: NOT eligible for prophylactic (use rescue criteria)
+    - GA exactly 30+0 weeks: NOT eligible for prophylactic (use rescue criteria)
     - FiO2 exactly 30%: NOT considered elevated (threshold not exceeded)
 
-    These choices follow European Consensus Guidelines which specify
-    prophylactic for "infants < 26 weeks" and rescue for "FiO2 > 30%". *)
+    These choices follow European Consensus Guidelines 2022 which specify
+    prophylactic for "infants < 30 weeks requiring intubation" and
+    rescue for "FiO2 > 30%". *)
 
-(** --- Boundary: Exactly 26 weeks is NOT prophylactic eligible --- *)
-Lemma ga_26_not_prophylactic : ~ prophylactic_eligible_ga 26.
+(** --- Boundary: Exactly 30 weeks is NOT prophylactic eligible (by GA) --- *)
+Lemma ga_30_not_prophylactic : ~ prophylactic_eligible_ga 30.
 Proof.
   unfold prophylactic_eligible_ga, prophylactic_ga_threshold.
   apply Nat.lt_irrefl.
@@ -563,13 +690,13 @@ Proof.
   apply Nat.lt_irrefl.
 Qed.
 
-(** --- Boundary: 26 weeks is the first ineligible GA --- *)
-Lemma ga_boundary_25_vs_26 :
-  prophylactic_eligible_ga 25 /\ ~ prophylactic_eligible_ga 26.
+(** --- Boundary: 30 weeks is the first ineligible GA --- *)
+Lemma ga_boundary_29_vs_30 :
+  prophylactic_eligible_ga 29 /\ ~ prophylactic_eligible_ga 30.
 Proof.
   split.
   - unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
-  - exact ga_26_not_prophylactic.
+  - exact ga_30_not_prophylactic.
 Qed.
 
 (** --- Boundary: 31% is the first elevated FiO2 --- *)
@@ -581,16 +708,16 @@ Proof.
   - unfold fio2_elevated, fio2_threshold. lia.
 Qed.
 
-(** --- Inclusive alternative: >= 26 weeks would include 26 --- *)
+(** --- Inclusive alternative: <= 30 weeks would include 30 --- *)
 Definition prophylactic_eligible_ga_inclusive (ga : gestational_age) : Prop :=
-  ga <= 26.
+  ga <= 30.
 
-Lemma ga_26_inclusive : prophylactic_eligible_ga_inclusive 26.
+Lemma ga_30_inclusive : prophylactic_eligible_ga_inclusive 30.
 Proof.
   unfold prophylactic_eligible_ga_inclusive. apply Nat.le_refl.
 Qed.
 
-(** Note: The strict version (< 26) is used per guidelines. *)
+(** Note: The strict version (< 30) is used per guidelines. *)
 
 (** -------------------------------------------------------------------------- *)
 (** Indication Logic (Core Criteria)                                           *)
@@ -671,6 +798,32 @@ Definition max_doses (prod : SurfactantProduct) : nat :=
   | Curosurf => 3
   | Infasurf => 3
   end.
+
+(** Product-specific prophylactic timing windows per FDA labeling. *)
+Definition prophylactic_window_for_product (prod : SurfactantProduct) : nat :=
+  match prod with
+  | Survanta => 15  (* "preferably within 15 minutes of birth" *)
+  | Curosurf => 15  (* European guidelines, not strict prophylaxis *)
+  | Infasurf => 30  (* "within 30 minutes of birth" *)
+  end.
+
+(** Within prophylactic window for specific product. *)
+Definition within_prophylactic_window_for (prod : SurfactantProduct)
+                                          (mins : minutes_since_birth) : Prop :=
+  mins <= prophylactic_window_for_product prod.
+
+(** --- Witness: 25 min valid for Infasurf but not Survanta --- *)
+Lemma timing_25min_infasurf_valid : within_prophylactic_window_for Infasurf 25.
+Proof.
+  unfold within_prophylactic_window_for, prophylactic_window_for_product.
+  simpl. lia.
+Qed.
+
+Lemma timing_25min_survanta_invalid : ~ within_prophylactic_window_for Survanta 25.
+Proof.
+  unfold within_prophylactic_window_for, prophylactic_window_for_product.
+  simpl. lia.
+Qed.
 
 (** -------------------------------------------------------------------------- *)
 (** Dose Calculation                                                           *)
@@ -876,29 +1029,39 @@ Record ClinicalState := mkClinicalState {
   cs_patient : Patient;
   cs_signs : RDSSigns;
   cs_contraindications : Contraindications;
-  cs_cxr : ChestXRay;
+  cs_imaging : ImagingEvidence;
   cs_blood_gas : BloodGas;
   cs_minutes_since_birth : minutes_since_birth;
   cs_cpap_trial : option CPAPTrialState;
   cs_current_support : RespiratorySupport
 }.
 
-(** Prophylactic pathway: GA < 26w, within timing window, no contraindications. *)
+(** Prophylactic pathway: GA < 30w, intubated for stabilization, within timing
+    window, no contraindications. Per European Consensus 2022. *)
 Definition prophylactic_recommendation (cs : ClinicalState) : Prop :=
   prophylactic_eligible_ga (ga_weeks (cs_patient cs)) /\
+  cs_current_support cs = Intubated /\
   within_prophylactic_window (cs_minutes_since_birth cs) /\
   no_contraindications (cs_contraindications cs).
 
-(** Rescue pathway: FiO2 elevated, clinical signs, CXR consistent,
-    no contraindications, and either no CPAP trial or CPAP failed. *)
+(** Rescue pathway: FiO2 elevated, clinical signs, imaging evidence,
+    no contraindications. CPAP trial logic depends on current support.
+    Blood gas acidosis strengthens indication but is not required.
+    Imaging: CXR OR ultrasound OR clinical judgement per guidelines. *)
 Definition rescue_recommendation (cs : ClinicalState) : Prop :=
   fio2_elevated (current_fio2 (cs_patient cs)) /\
   clinical_rds (cs_signs cs) /\
-  cxr_consistent_with_rds (cs_cxr cs) /\
+  (* Imaging OR blood gas supporting evidence required *)
+  (imaging_supports_rds (cs_imaging cs) \/
+   blood_gas_supports_surfactant (cs_blood_gas cs)) /\
   no_contraindications (cs_contraindications cs) /\
-  match cs_cpap_trial cs with
-  | None => True  (* No CPAP trial required if already intubated *)
-  | Some trial => cpap_trial_failed trial
+  match cs_current_support cs with
+  | Intubated => True  (* Already intubated, no CPAP trial needed *)
+  | CPAP => match cs_cpap_trial cs with
+            | None => False  (* On CPAP but no trial data - invalid state *)
+            | Some trial => cpap_trial_failed trial
+            end
+  | RoomAir => False  (* Must be on respiratory support for rescue *)
   end.
 
 (** Unified recommendation: prophylactic OR rescue pathway. *)
@@ -909,25 +1072,24 @@ Definition surfactant_recommendation (cs : ClinicalState) : Prop :=
 (** --- Witness: Complete prophylactic case --- *)
 Definition prophylactic_case : ClinicalState :=
   mkClinicalState
-    (mkPatient 24 650 0 21)           (* 24w, 650g, just born, room air *)
+    (mkPatient 28 900 0 40)           (* 28w, 900g, just born, on O2 *)
     (mkRDSSigns false false false false) (* No signs yet *)
     clear_contraindications
-    (mkChestXRay false false false false) (* No CXR yet *)
-    (mkBloodGas 735 40 70)            (* Normal gas *)
+    (mkImagingEvidence None None false) (* No imaging yet - not needed for prophylactic *)
+    (mkBloodGas 7350 40 70)           (* Normal gas *)
     5                                  (* 5 minutes old *)
     None                               (* No CPAP trial *)
-    RoomAir.
+    Intubated.                         (* Intubated for stabilization *)
 
 Lemma prophylactic_case_recommended : surfactant_recommendation prophylactic_case.
 Proof.
   unfold surfactant_recommendation, prophylactic_case. split.
   - unfold valid_patient. simpl.
     repeat split; apply Nat.leb_le; reflexivity.
-  - left. unfold prophylactic_recommendation. simpl. split.
+  - left. unfold prophylactic_recommendation. simpl.
+    repeat split; try exact clear_contraindications_ok.
     + unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
-    + split.
-      * unfold within_prophylactic_window, prophylactic_window_minutes. lia.
-      * exact clear_contraindications_ok.
+    + unfold within_prophylactic_window, prophylactic_window_minutes. lia.
 Qed.
 
 (** --- Witness: Complete rescue case --- *)
@@ -936,8 +1098,8 @@ Definition rescue_case : ClinicalState :=
     (mkPatient 28 1100 6 50)          (* 28w, 1100g, 6h old, FiO2 50% *)
     (mkRDSSigns true true true false) (* Grunting, retractions, flaring *)
     clear_contraindications
-    classic_rds_cxr                    (* Ground-glass on CXR *)
-    (mkBloodGas 725 55 50)            (* Mild acidosis *)
+    cxr_evidence                       (* CXR shows RDS *)
+    (mkBloodGas 7250 55 50)           (* Mild acidosis *)
     360                                (* 6 hours = 360 minutes *)
     (Some failed_cpap_trial)          (* CPAP trial failed *)
     CPAP.
@@ -952,30 +1114,30 @@ Proof.
     + split.
       * unfold clinical_rds, sign_count. simpl. lia.
       * split.
-        { unfold cxr_consistent_with_rds, classic_rds_cxr. simpl. left. reflexivity. }
+        { left. exact cxr_evidence_supports. }
         { split.
           - exact clear_contraindications_ok.
           - exact failed_cpap_trial_indicates_surfactant. }
 Qed.
 
-(** --- Counterexample: Contraindication blocks despite indication --- *)
+(** --- Counterexample: Contraindication blocks despite meeting other criteria --- *)
 Definition contraindicated_case : ClinicalState :=
   mkClinicalState
-    (mkPatient 24 650 0 21)
+    (mkPatient 28 900 0 21)            (* Would qualify by GA, room air *)
     (mkRDSSigns false false false false)
-    cdh_present                        (* CDH present! *)
-    (mkChestXRay false false false false)
-    (mkBloodGas 735 40 70)
-    5
+    cdh_present                        (* CDH present - blocks! *)
+    (mkImagingEvidence None None false) (* No imaging *)
+    (mkBloodGas 7350 40 70)
+    5                                  (* Within timing window *)
     None
-    RoomAir.
+    Intubated.                         (* Intubated *)
 
 Lemma contraindicated_case_not_recommended : ~ surfactant_recommendation contraindicated_case.
 Proof.
   unfold surfactant_recommendation, contraindicated_case.
   intros [_ [Hpro | Hres]].
   - unfold prophylactic_recommendation in Hpro. simpl in Hpro.
-    destruct Hpro as [_ [_ Hno]].
+    destruct Hpro as [_ [_ [_ Hno]]].
     apply cdh_not_clear. exact Hno.
   - unfold rescue_recommendation in Hres. simpl in Hres.
     destruct Hres as [Hfio2 _].
@@ -1040,12 +1202,12 @@ Proof.
   exact cdh_is_contraindication.
 Qed.
 
-(** Theorem: Well infant (GA >= 26, FiO2 <= 30) is never indicated.
+(** Theorem: Well infant (GA >= 30, FiO2 <= 30) is never indicated.
     This is substantive: proves the decision logic correctly excludes
     term or near-term infants not in respiratory distress. *)
 Theorem well_infant_not_indicated :
   forall p signs,
-    ga_weeks p >= 26 ->
+    ga_weeks p >= 30 ->
     current_fio2 p <= fio2_threshold ->
     ~ surfactant_indicated p signs.
 Proof.
@@ -1061,7 +1223,7 @@ Qed.
 (** Theorem: Withholding from well infant does not miss indication. *)
 Theorem withhold_well_infant_safe :
   forall p signs c dose,
-    ga_weeks p >= 26 ->
+    ga_weeks p >= 30 ->
     current_fio2 p <= fio2_threshold ->
     ~ safe_to_give p signs c dose.
 Proof.
@@ -1165,6 +1327,23 @@ Module SurfactantDecision.
     ground_glass_opacity cxr ||
     (air_bronchograms cxr && low_lung_volumes cxr).
 
+  (** Decidable ultrasound consistent with RDS. *)
+  Definition ultrasound_consistent_dec (us : LungUltrasound) : bool :=
+    bilateral_white_lung us ||
+    (consolidations us && pleural_irregularity us).
+
+  (** Decidable imaging supports RDS: CXR OR ultrasound OR clinical judgement. *)
+  Definition imaging_supports_dec (ie : ImagingEvidence) : bool :=
+    match ie_cxr ie with
+    | Some cxr => cxr_consistent_dec cxr
+    | None => false
+    end ||
+    match ie_ultrasound ie with
+    | Some us => ultrasound_consistent_dec us
+    | None => false
+    end ||
+    ie_clinical_judgement ie.
+
   (** Decidable timing window check. *)
   Definition within_timing_window_dec (mins : minutes_since_birth) : bool :=
     mins <=? prophylactic_window_minutes.
@@ -1182,24 +1361,36 @@ Module SurfactantDecision.
 
   (** Decidable prophylactic recommendation. *)
   Definition prophylactic_rec_dec (ga : gestational_age)
+                                  (support : RespiratorySupport)
                                   (mins : minutes_since_birth)
                                   (c : Contraindications) : bool :=
     prophylactic_eligible_dec ga &&
+    match support with Intubated => true | _ => false end &&
     within_timing_window_dec mins &&
     no_contraindications_dec c.
 
+  (** Decidable blood gas supports surfactant. *)
+  Definition blood_gas_supports_dec (bg : BloodGas) : bool :=
+    (ph bg <? ph_critical_low) || (pco2_critical_high <? pco2 bg).
+
   (** Decidable rescue recommendation. *)
   Definition rescue_rec_dec (fio2 : fio2_pct) (signs : RDSSigns)
-                            (cxr : ChestXRay) (c : Contraindications)
+                            (imaging : ImagingEvidence) (bg : BloodGas)
+                            (c : Contraindications)
+                            (support : RespiratorySupport)
                             (cpap_trial : option CPAPTrialState) : bool :=
     fio2_elevated_dec fio2 &&
     clinical_rds_dec signs &&
-    cxr_consistent_dec cxr &&
+    (imaging_supports_dec imaging || blood_gas_supports_dec bg) &&
     no_contraindications_dec c &&
-    match cpap_trial with
-    | None => true
-    | Some trial => cpap_failed_dec (cpap_pressure_cmh2o trial)
-                                    (fio2_on_cpap trial)
+    match support with
+    | Intubated => true
+    | CPAP => match cpap_trial with
+              | None => false
+              | Some trial => cpap_failed_dec (cpap_pressure_cmh2o trial)
+                                              (fio2_on_cpap trial)
+              end
+    | RoomAir => false
     end.
 
   (** Main unified recommendation function.
@@ -1207,12 +1398,15 @@ Module SurfactantDecision.
   Definition recommend_surfactant (cs : ClinicalState) : bool :=
     valid_patient_dec (cs_patient cs) &&
     (prophylactic_rec_dec (ga_weeks (cs_patient cs))
+                          (cs_current_support cs)
                           (cs_minutes_since_birth cs)
                           (cs_contraindications cs) ||
      rescue_rec_dec (current_fio2 (cs_patient cs))
                     (cs_signs cs)
-                    (cs_cxr cs)
+                    (cs_imaging cs)
+                    (cs_blood_gas cs)
                     (cs_contraindications cs)
+                    (cs_current_support cs)
                     (cs_cpap_trial cs)).
 
   (** ---------- RUNTIME SAFETY ----------
@@ -1240,12 +1434,15 @@ Module SurfactantDecision.
     if negb (valid_patient_dec (cs_patient cs)) then
       InvalidPatient
     else if orb (prophylactic_rec_dec (ga_weeks (cs_patient cs))
+                                      (cs_current_support cs)
                                       (cs_minutes_since_birth cs)
                                       (cs_contraindications cs))
                 (rescue_rec_dec (current_fio2 (cs_patient cs))
                                 (cs_signs cs)
-                                (cs_cxr cs)
+                                (cs_imaging cs)
+                                (cs_blood_gas cs)
                                 (cs_contraindications cs)
+                                (cs_current_support cs)
                                 (cs_cpap_trial cs)) then
       Indicated
     else
