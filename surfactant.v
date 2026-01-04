@@ -52,12 +52,9 @@
 (** -------------------------------------------------------------------------- *)
 
 (**
-   1. Link assess_response to repeat_eligible: prove non-responder at adequate
-      interval satisfies timing precondition for repeat dose.
+   1. Integrate weaning criteria: connect ready_to_wean to treatment termination.
 
-   2. Integrate weaning criteria: connect ready_to_wean to treatment termination.
-
-   3. SF ratio / OI integration: decide whether adjunct metrics should gate
+   2. SF ratio / OI integration: decide whether adjunct metrics should gate
       decisions or remain informational only.
 *)
 
@@ -1152,6 +1149,43 @@ Proof. reflexivity. Qed.
 (** --- Witness: Any assessment at 1h = partial (too early) --- *)
 Lemma response_early_example : assess_response 50 35 1 = PartialResponse.
 Proof. reflexivity. Qed.
+
+(** Non-responder with adequate interval and elevated FiO2 meets repeat timing. *)
+Theorem nonresponder_repeat_timing :
+  forall ds fio2_pre fio2_post,
+    assess_response fio2_pre fio2_post (hours_since_last ds) = NonResponder ->
+    fio2_elevated fio2_post ->
+    doses_given ds < max_doses (product ds) ->
+    hours_since_last ds >= min_hours_between_doses (product ds) ->
+    repeat_eligible ds fio2_post.
+Proof.
+  intros ds fio2_pre fio2_post _ Hfio2 Hdoses Htiming.
+  unfold repeat_eligible. auto.
+Qed.
+
+(** Partial responder with elevated FiO2 also meets repeat criteria. *)
+Theorem partial_responder_repeat_timing :
+  forall ds fio2_pre fio2_post,
+    assess_response fio2_pre fio2_post (hours_since_last ds) = PartialResponse ->
+    fio2_elevated fio2_post ->
+    doses_given ds < max_doses (product ds) ->
+    hours_since_last ds >= min_hours_between_doses (product ds) ->
+    repeat_eligible ds fio2_post.
+Proof.
+  intros ds fio2_pre fio2_post _ Hfio2 Hdoses Htiming.
+  unfold repeat_eligible. auto.
+Qed.
+
+(** Full responder (FiO2 no longer elevated) cannot meet repeat criteria. *)
+Theorem responder_no_repeat :
+  forall ds fio2_post,
+    ~ fio2_elevated fio2_post ->
+    ~ repeat_eligible ds fio2_post.
+Proof.
+  intros ds fio2_post Hnot_elevated.
+  unfold repeat_eligible. intros [_ [_ Hfio2]].
+  contradiction.
+Qed.
 
 (** -------------------------------------------------------------------------- *)
 (** Weaning Criteria                                                            *)
