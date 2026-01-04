@@ -81,11 +81,24 @@ Record Patient := mkPatient {
 Definition ga_total_days (p : Patient) : nat :=
   ga_weeks p * 7 + ga_days p.
 
-(** Validity predicate: GA and weight within physiological bounds. *)
+(** Prophylactic surfactant threshold: < 30 weeks (< 210 days) per European
+    Consensus 2022. Days-based precision: 29+6 (209 days) qualifies,
+    30+0 (210 days) does not. *)
+Definition prophylactic_ga_threshold_weeks : nat := 30.
+Definition prophylactic_ga_threshold_days : nat := prophylactic_ga_threshold_weeks * 7.
+
+(** Eligible for prophylactic surfactant based on GA. *)
+Definition prophylactic_eligible (p : Patient) : Prop :=
+  ga_total_days p < prophylactic_ga_threshold_days.
+
+(** Validity predicate: GA, weight, postnatal age, and FiO2 within physiological bounds.
+    Postnatal age upper bound of 168 hours (7 days) reflects that surfactant
+    therapy is primarily given in the first week of life. *)
 Definition valid_patient (p : Patient) : Prop :=
   22 <= ga_weeks p /\ ga_weeks p <= 42 /\
   ga_days p <= 6 /\
   200 <= birth_weight p /\ birth_weight p <= 6000 /\
+  age_hours p <= 168 /\
   21 <= current_fio2 p /\ current_fio2 p <= 100.
 
 (** --- Witness: A valid 26+0 week, 800g infant --- *)
@@ -207,6 +220,19 @@ Proof.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
+(** FiO2 Threshold                                                             *)
+(** -------------------------------------------------------------------------- *)
+
+(** European Consensus 2022 threshold: FiO2 > 30% indicates need for surfactant.
+    This constant is the single source of truth used by both the general
+    fio2_elevated predicate and the CPAP failure criteria. *)
+Definition fio2_threshold : nat := 30.
+
+(** FiO2 exceeds threshold. *)
+Definition fio2_elevated (f : fio2_pct) : Prop :=
+  f > fio2_threshold.
+
+(** -------------------------------------------------------------------------- *)
 (** CPAP-First Protocol                                                        *)
 (** -------------------------------------------------------------------------- *)
 
@@ -216,22 +242,27 @@ Inductive RespiratorySupport : Type :=
   | CPAP             (* Continuous positive airway pressure *)
   | Intubated.       (* Endotracheal tube in place *)
 
-(** CPAP trial state for rescue surfactant decision. *)
+(** CPAP trial state for rescue surfactant decision.
+    Duration is recorded for audit/trending but does not gate the failure
+    decision: European Consensus 2022 specifies FiO2/pressure thresholds
+    without a minimum trial duration. Local protocols may impose additional
+    duration requirements before declaring failure. *)
 Record CPAPTrialState := mkCPAPTrialState {
   cpap_pressure_cmh2o : nat;    (* Typical 5-8 cmH2O *)
-  cpap_duration_minutes : nat;  (* How long on CPAP *)
+  cpap_duration_minutes : nat;  (* Recorded for audit; not used in failure gate *)
   fio2_on_cpap : fio2_pct       (* FiO2 requirement while on CPAP *)
 }.
 
-(** CPAP failure threshold per European Consensus 2022:
-    FiO2 > 30% on CPAP pressure >= 6 cmH2O indicates surfactant needed. *)
-Definition cpap_fio2_failure_threshold : nat := 30.
+(** CPAP failure pressure threshold per European Consensus 2022:
+    CPAP >= 6 cmH2O with FiO2 > 30% indicates surfactant needed.
+    No minimum duration is specified by the guideline. *)
 Definition cpap_min_pressure : nat := 6.
 
-(** CPAP trial has failed, surfactant needed. *)
+(** CPAP trial has failed, surfactant needed. Failure is determined by
+    pressure (>= 6 cmH2O) and FiO2 (> 30%) thresholds; duration is not gating. *)
 Definition cpap_trial_failed (trial : CPAPTrialState) : Prop :=
   cpap_pressure_cmh2o trial >= cpap_min_pressure /\
-  fio2_on_cpap trial > cpap_fio2_failure_threshold.
+  fio2_on_cpap trial > fio2_threshold.
 
 (** --- Witness: CPAP failure at FiO2 50% on 7 cmH2O --- *)
 Definition failed_cpap_trial : CPAPTrialState :=
@@ -240,7 +271,7 @@ Definition failed_cpap_trial : CPAPTrialState :=
 Lemma failed_cpap_trial_indicates_surfactant : cpap_trial_failed failed_cpap_trial.
 Proof.
   unfold cpap_trial_failed, failed_cpap_trial, cpap_min_pressure,
-         cpap_fio2_failure_threshold. simpl. lia.
+         fio2_threshold. simpl. lia.
 Qed.
 
 (** --- Counterexample: Stable on CPAP at FiO2 30% --- *)
@@ -249,20 +280,9 @@ Definition stable_cpap_trial : CPAPTrialState :=
 
 Lemma stable_cpap_not_failed : ~ cpap_trial_failed stable_cpap_trial.
 Proof.
-  unfold cpap_trial_failed, stable_cpap_trial, cpap_fio2_failure_threshold,
+  unfold cpap_trial_failed, stable_cpap_trial, fio2_threshold,
          cpap_min_pressure. simpl. lia.
 Qed.
-
-(** -------------------------------------------------------------------------- *)
-(** FiO2 Threshold                                                             *)
-(** -------------------------------------------------------------------------- *)
-
-(** European Consensus threshold: FiO2 > 30% indicates need for surfactant. *)
-Definition fio2_threshold : nat := 30.
-
-(** FiO2 exceeds threshold. *)
-Definition fio2_elevated (f : fio2_pct) : Prop :=
-  f > fio2_threshold.
 
 (** --- Witness: FiO2 45% exceeds 30% threshold --- *)
 Lemma fio2_45_elevated : fio2_elevated 45.
@@ -611,19 +631,21 @@ Proof.
 Qed.
 
 (** Prophylactic administration requires GA eligibility, timing, AND intubation.
-    GA threshold is 30 weeks per European Consensus 2022. *)
-Definition prophylactic_complete (ga : gestational_age) (mins : minutes_since_birth)
+    Uses days-based GA threshold for precision. *)
+Definition prophylactic_complete (p : Patient) (mins : minutes_since_birth)
                                  (support : RespiratorySupport) : Prop :=
-  ga < 30 /\
+  prophylactic_eligible p /\
   within_prophylactic_window mins /\
   support = Intubated.
 
-(** --- Witness: 28w infant at 5 minutes, intubated → prophylactic criteria met --- *)
-Lemma prophylactic_complete_example : prophylactic_complete 28 5 Intubated.
+(** --- Witness: 28+0 week infant at 5 minutes, intubated → criteria met --- *)
+Lemma prophylactic_complete_example :
+  prophylactic_complete (mkPatient 28 0 900 0 40) 5 Intubated.
 Proof.
-  unfold prophylactic_complete, within_prophylactic_window,
-         prophylactic_window_minutes. simpl.
-  repeat split; try lia; try reflexivity.
+  unfold prophylactic_complete, prophylactic_eligible, ga_total_days,
+         prophylactic_ga_threshold_days, prophylactic_ga_threshold_weeks,
+         within_prophylactic_window, prophylactic_window_minutes. simpl.
+  repeat split; lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -718,27 +740,28 @@ Lemma conventional_not_cpap : cpap_compatible Conventional = false.
 Proof. reflexivity. Qed.
 
 (** -------------------------------------------------------------------------- *)
-(** Gestational Age Thresholds                                                 *)
+(** GA Eligibility Witnesses                                                   *)
 (** -------------------------------------------------------------------------- *)
 
-(** Prophylactic surfactant threshold: < 30 weeks per European Consensus 2022.
-    Guideline: preterm infant <30 weeks requiring intubation for stabilization. *)
-Definition prophylactic_ga_threshold : nat := 30.
-
-(** Eligible for prophylactic surfactant based on GA alone. *)
-Definition prophylactic_eligible_ga (ga : gestational_age) : Prop :=
-  ga < prophylactic_ga_threshold.
-
-(** --- Witness: 25 weeks eligible for prophylactic --- *)
-Lemma ga_25_prophylactic_eligible : prophylactic_eligible_ga 25.
+(** --- Witness: 25+0 weeks eligible for prophylactic --- *)
+Lemma ga_25_0_prophylactic_eligible : prophylactic_eligible (mkPatient 25 0 800 0 21).
 Proof.
-  unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
+  unfold prophylactic_eligible, ga_total_days, prophylactic_ga_threshold_days,
+         prophylactic_ga_threshold_weeks. simpl. lia.
 Qed.
 
-(** --- Counterexample: 32 weeks not eligible for prophylactic --- *)
-Lemma ga_32_not_prophylactic_eligible : ~ prophylactic_eligible_ga 32.
+(** --- Witness: 29+6 weeks (209 days) eligible for prophylactic --- *)
+Lemma ga_29_6_prophylactic_eligible : prophylactic_eligible (mkPatient 29 6 1200 0 21).
 Proof.
-  unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
+  unfold prophylactic_eligible, ga_total_days, prophylactic_ga_threshold_days,
+         prophylactic_ga_threshold_weeks. simpl. lia.
+Qed.
+
+(** --- Counterexample: 32+0 weeks not eligible for prophylactic --- *)
+Lemma ga_32_0_not_prophylactic_eligible : ~ prophylactic_eligible (mkPatient 32 0 1800 0 21).
+Proof.
+  unfold prophylactic_eligible, ga_total_days, prophylactic_ga_threshold_days,
+         prophylactic_ga_threshold_weeks. simpl. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -758,48 +781,35 @@ Qed.
     prophylactic for "infants < 30 weeks requiring intubation" and
     rescue for "FiO2 > 30%". *)
 
-(** --- Boundary: Exactly 30 weeks is NOT prophylactic eligible (by GA) --- *)
-Lemma ga_30_not_prophylactic : ~ prophylactic_eligible_ga 30.
+(** --- Boundary: Exactly 30+0 weeks (210 days) is NOT prophylactic eligible --- *)
+Lemma ga_30_0_not_prophylactic : ~ prophylactic_eligible (mkPatient 30 0 1500 0 21).
 Proof.
-  unfold prophylactic_eligible_ga, prophylactic_ga_threshold.
-  apply Nat.lt_irrefl.
+  unfold prophylactic_eligible, ga_total_days, prophylactic_ga_threshold_days,
+         prophylactic_ga_threshold_weeks. simpl. lia.
 Qed.
 
 (** --- Boundary: Exactly 30% FiO2 is NOT elevated --- *)
 Lemma fio2_30_not_elevated : ~ fio2_elevated 30.
 Proof.
-  unfold fio2_elevated, fio2_threshold.
-  apply Nat.lt_irrefl.
+  unfold fio2_elevated, fio2_threshold. lia.
 Qed.
 
-(** --- Boundary: 30 weeks is the first ineligible GA --- *)
-Lemma ga_boundary_29_vs_30 :
-  prophylactic_eligible_ga 29 /\ ~ prophylactic_eligible_ga 30.
+(** --- Boundary: 29+6 (209 days) eligible, 30+0 (210 days) not --- *)
+Lemma ga_boundary_29_6_vs_30_0 :
+  prophylactic_eligible (mkPatient 29 6 1200 0 21) /\
+  ~ prophylactic_eligible (mkPatient 30 0 1500 0 21).
 Proof.
-  split.
-  - unfold prophylactic_eligible_ga, prophylactic_ga_threshold. lia.
-  - exact ga_30_not_prophylactic.
+  unfold prophylactic_eligible, ga_total_days, prophylactic_ga_threshold_days,
+         prophylactic_ga_threshold_weeks. simpl.
+  split; lia.
 Qed.
 
 (** --- Boundary: 31% is the first elevated FiO2 --- *)
 Lemma fio2_boundary_30_vs_31 :
   ~ fio2_elevated 30 /\ fio2_elevated 31.
 Proof.
-  split.
-  - exact fio2_30_not_elevated.
-  - unfold fio2_elevated, fio2_threshold. lia.
+  unfold fio2_elevated, fio2_threshold. lia.
 Qed.
-
-(** --- Inclusive alternative: <= 30 weeks would include 30 --- *)
-Definition prophylactic_eligible_ga_inclusive (ga : gestational_age) : Prop :=
-  ga <= 30.
-
-Lemma ga_30_inclusive : prophylactic_eligible_ga_inclusive 30.
-Proof.
-  unfold prophylactic_eligible_ga_inclusive. apply Nat.le_refl.
-Qed.
-
-(** Note: The strict version (< 30) is used per guidelines. *)
 
 (** -------------------------------------------------------------------------- *)
 (** Indication Logic (Core Criteria)                                           *)
@@ -932,60 +942,90 @@ Proof. reflexivity. Qed.
 Lemma curosurf_800g_repeat_dose : repeat_dose Curosurf 800 = 80.
 Proof. reflexivity. Qed.
 
-(** Product-specific maximum single doses.
-    NOTE: These are DERIVED MODELING ASSUMPTIONS for specific weight ranges,
-    not direct label quotes. FDA labels specify mg/kg (weight-based), not
-    absolute mg caps. Derivations:
-    - Survanta: 100 mg/kg × 4 kg assumed max = 400 mg
-    - Curosurf: 200 mg/kg × 3 kg assumed max = 600 mg
-    - Infasurf: 105 mg/kg × 4 kg assumed max = 420 mg
-    This formalization supports weights up to ~3-4 kg. For larger infants,
-    these caps may be too restrictive; consult actual label for dose/kg. *)
-Definition max_single_dose (prod : SurfactantProduct) : nat :=
+(** Dose validity per FDA label: dose matches weight-based mg/kg specification.
+    Primary validity check: dose equals expected value from weight calculation. *)
+Definition dose_matches_calculation (prod : SurfactantProduct) (weight : weight_g)
+                                    (dose : nat) (is_initial : bool) : Prop :=
+  dose = if is_initial then initial_dose prod weight
+         else repeat_dose prod weight.
+
+(** Dose is positive and correctly calculated. *)
+Definition dose_valid_per_kg (prod : SurfactantProduct) (weight : weight_g)
+                             (dose : nat) (is_initial : bool) : Prop :=
+  dose > 0 /\ dose_matches_calculation prod weight dose is_initial.
+
+(** Local policy maximum single doses (OPTIONAL constraint layer).
+    These are site-specific safety caps, not FDA requirements.
+    Derivations assume max infant weights of 3-4 kg:
+    - Survanta: 100 mg/kg × 4 kg = 400 mg
+    - Curosurf: 200 mg/kg × 3 kg = 600 mg
+    - Infasurf: 105 mg/kg × 4 kg = 420 mg
+    Sites treating larger infants should adjust or remove these caps. *)
+Definition local_policy_max_dose (prod : SurfactantProduct) : nat :=
   match prod with
-  | Survanta => 400  (* 100 mg/kg × 4 kg *)
-  | Curosurf => 600  (* 200 mg/kg × 3 kg *)
-  | Infasurf => 420  (* 105 mg/kg × 4 kg *)
+  | Survanta => 400
+  | Curosurf => 600
+  | Infasurf => 420
   end.
 
-(** Product- and weight-aware dose validity.
-    Dose must be positive and within product-specific maximum. *)
-Definition dose_valid_for_product (prod : SurfactantProduct) (dose : nat) : Prop :=
-  dose > 0 /\ dose <= max_single_dose prod.
+(** Dose within local policy cap (optional additional constraint). *)
+Definition dose_within_local_cap (prod : SurfactantProduct) (dose : nat) : Prop :=
+  dose <= local_policy_max_dose prod.
 
-(** Calculated dose validity: checks that calculated dose is within bounds. *)
-Definition calculated_dose_valid (prod : SurfactantProduct) (weight : weight_g)
-                                 (is_initial : bool) : Prop :=
-  let dose := if is_initial then initial_dose prod weight
-              else repeat_dose prod weight in
-  dose_valid_for_product prod dose.
+(** Dose within acceptable bounds: positive and under local cap.
+    Use when weight/calculation info is not available. *)
+Definition dose_within_bounds (prod : SurfactantProduct) (dose : nat) : Prop :=
+  dose > 0 /\ dose_within_local_cap prod dose.
+
+(** Full validity: per-kg correct AND within local cap.
+    Use when weight and initial/repeat info are available. *)
+Definition dose_valid_calculated (prod : SurfactantProduct) (weight : weight_g)
+                                 (dose : nat) (is_initial : bool) : Prop :=
+  dose_valid_per_kg prod weight dose is_initial /\
+  dose_within_local_cap prod dose.
+
+(** Alias for compatibility: bounds check only. *)
+Definition dose_valid_for_product (prod : SurfactantProduct) (dose : nat) : Prop :=
+  dose_within_bounds prod dose.
 
 (** Legacy dose validity (conservative bound for any product). *)
 Definition dose_valid (dose : nat) : Prop :=
   dose > 0 /\ dose <= 600.
 
-(** --- Witness: 160mg valid for Curosurf --- *)
+(** --- Witness: 160mg within Curosurf bounds --- *)
 Lemma dose_160_valid_curosurf : dose_valid_for_product Curosurf 160.
 Proof.
-  unfold dose_valid_for_product, max_single_dose. lia.
+  unfold dose_valid_for_product, dose_within_bounds,
+         dose_within_local_cap, local_policy_max_dose. lia.
 Qed.
 
-(** --- Witness: 400mg valid for Survanta (at max) --- *)
-Lemma dose_400_valid_survanta : dose_valid_for_product Survanta 400.
+(** --- Witness: 160mg correctly calculated for 800g Curosurf initial --- *)
+Lemma dose_160_calculated_curosurf : dose_valid_calculated Curosurf 800 160 true.
 Proof.
-  unfold dose_valid_for_product, max_single_dose. lia.
+  unfold dose_valid_calculated, dose_valid_per_kg, dose_matches_calculation,
+         dose_within_local_cap, local_policy_max_dose, initial_dose,
+         calculate_dose, initial_dose_per_kg. simpl. lia.
 Qed.
 
-(** --- Counterexample: 500mg exceeds Survanta max --- *)
-Lemma dose_500_invalid_survanta : ~ dose_valid_for_product Survanta 500.
+(** --- Witness: 100mg within Survanta bounds --- *)
+Lemma dose_100_valid_survanta : dose_valid_for_product Survanta 100.
 Proof.
-  unfold dose_valid_for_product, max_single_dose. lia.
+  unfold dose_valid_for_product, dose_within_bounds,
+         dose_within_local_cap, local_policy_max_dose. lia.
 Qed.
 
-(** --- Counterexample: 700mg exceeds Curosurf max --- *)
-Lemma dose_700_invalid_curosurf : ~ dose_valid_for_product Curosurf 700.
+(** --- Counterexample: 500mg exceeds Survanta local cap --- *)
+Lemma dose_500_exceeds_survanta_cap : ~ dose_valid_for_product Survanta 500.
 Proof.
-  unfold dose_valid_for_product, max_single_dose. lia.
+  unfold dose_valid_for_product, dose_within_bounds,
+         dose_within_local_cap, local_policy_max_dose. lia.
+Qed.
+
+(** --- Counterexample: 700mg exceeds Curosurf local cap --- *)
+Lemma dose_700_exceeds_curosurf_cap : ~ dose_valid_for_product Curosurf 700.
+Proof.
+  unfold dose_valid_for_product, dose_within_bounds,
+         dose_within_local_cap, local_policy_max_dose. lia.
 Qed.
 
 (** Per-product dose bounds for clinically appropriate weight ranges. *)
@@ -1123,13 +1163,22 @@ Qed.
 (** -------------------------------------------------------------------------- *)
 
 (** Surfactant response assessment: check if FiO2 improved post-dose.
-    Non-response suggests alternate diagnosis or need for repeat. *)
+    Non-response suggests alternate diagnosis or need for repeat.
+
+    LINKING INVARIANT: The hours_post_dose parameter to assess_response
+    corresponds to hours_since_last in DosingState. When assessing response
+    at time T after the last dose, use the same T for both:
+      assess_response fio2_pre fio2_post T
+      DosingState with hours_since_last = T
+    This ensures repeat_eligible correctly integrates response assessment. *)
 Inductive SurfactantResponse : Type :=
   | Responded        (* FiO2 decreased significantly post-dose *)
   | PartialResponse  (* Some improvement but still elevated FiO2 *)
   | NonResponder.    (* No improvement or worsening *)
 
-(** Response assessment based on FiO2 change. *)
+(** Response assessment based on FiO2 change.
+    Parameter hours_post_dose must equal hours_since_last in DosingState
+    for correct integration with repeat_eligible. *)
 Definition assess_response (fio2_pre fio2_post : fio2_pct)
                            (hours_post_dose : nat) : SurfactantResponse :=
   if hours_post_dose <? 2 then
@@ -1322,12 +1371,42 @@ Record ClinicalState := mkClinicalState {
 }.
 
 (** Prophylactic pathway: GA < 30+0w (< 210 days), intubated for stabilization,
-    within timing window, no contraindications. Per European Consensus 2022. *)
+    within timing window, no contraindications. Per European Consensus 2022.
+    Uses conservative 15-minute window (strictest across all products).
+    For product-specific timing (e.g., Infasurf allows 30 min), use
+    prophylactic_recommendation_for. *)
 Definition prophylactic_recommendation (cs : ClinicalState) : Prop :=
   ga_total_days (cs_patient cs) < 210 /\
   cs_current_support cs = Intubated /\
   within_prophylactic_window (cs_minutes_since_birth cs) /\
   no_contraindications (cs_contraindications cs).
+
+(** Product-specific prophylactic pathway using product-specific timing.
+    Infasurf allows up to 30 minutes; Survanta/Curosurf use 15 minutes. *)
+Definition prophylactic_recommendation_for (cs : ClinicalState)
+                                           (prod : SurfactantProduct) : Prop :=
+  ga_total_days (cs_patient cs) < 210 /\
+  cs_current_support cs = Intubated /\
+  within_prophylactic_window_for prod (cs_minutes_since_birth cs) /\
+  no_contraindications (cs_contraindications cs).
+
+(** Product-specific is at least as permissive as conservative default. *)
+Lemma conservative_implies_product_prophylactic :
+  forall cs prod,
+    prophylactic_recommendation cs ->
+    prophylactic_recommendation_for cs prod.
+Proof.
+  intros cs prod [Hga [Hsup [Htime Hcontra]]].
+  unfold prophylactic_recommendation_for, within_prophylactic_window_for,
+         prophylactic_window_for_product.
+  unfold within_prophylactic_window, prophylactic_window_minutes in Htime.
+  split. { exact Hga. }
+  split. { exact Hsup. }
+  split. { destruct prod; simpl;
+           apply Nat.le_trans with 15; auto;
+           apply Nat.leb_le; reflexivity. }
+  exact Hcontra.
+Qed.
 
 (** Rescue pathway: FiO2 elevated, clinical signs, imaging/blood gas evidence.
     NOTE: This is MORE CONSERVATIVE than European 2022 guideline, which states
@@ -1410,9 +1489,7 @@ Proof.
     destruct Himg as [H | [H | H]]; try contradiction; discriminate.
   - unfold blood_gas_supports_surfactant, respiratory_acidosis,
            ph_critical_low, pco2_critical_high in Hgas. simpl in Hgas.
-    destruct Hgas as [H | H].
-    + apply Nat.ltb_ge in H. discriminate.
-    + apply Nat.ltb_ge in H. discriminate.
+    destruct Hgas as [H | H]; apply Nat.ltb_ge in H; discriminate.
 Qed.
 
 (** Unified recommendation: prophylactic OR rescue pathway. *)
@@ -1646,6 +1723,7 @@ Extract Inductive nat => "int" ["0" "succ"]
 
 (** Extract key functions for clinical use. *)
 Extract Constant Nat.add => "(+)".
+Extract Constant Nat.sub => "(fun n m -> max 0 (n - m))".
 Extract Constant Nat.mul => "( * )".
 Extract Constant Nat.div => "(/)".
 Extract Constant Nat.leb => "(<=)".
@@ -1700,7 +1778,7 @@ Module SurfactantDecision.
 
   (** Check CPAP failure. *)
   Definition cpap_failed_dec (pressure : nat) (fio2 : fio2_pct) : bool :=
-    (cpap_min_pressure <=? pressure) && (cpap_fio2_failure_threshold <? fio2).
+    (cpap_min_pressure <=? pressure) && (fio2_threshold <? fio2).
 
   Lemma cpap_failed_reflect : forall trial,
     cpap_failed_dec (cpap_pressure_cmh2o trial) (fio2_on_cpap trial) = true <->
@@ -1804,6 +1882,7 @@ Module SurfactantDecision.
     (22 <=? ga_weeks p) && (ga_weeks p <=? 42) &&
     (ga_days p <=? 6) &&
     (200 <=? birth_weight p) && (birth_weight p <=? 6000) &&
+    (age_hours p <=? 168) &&
     (21 <=? current_fio2 p) && (current_fio2 p <=? 100).
 
   Lemma valid_patient_reflect : forall p,

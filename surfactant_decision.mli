@@ -97,6 +97,8 @@ type contraindications = { congenital_diaphragmatic_hernia : bool;
                            active_pulmonary_hemorrhage : bool;
                            pneumothorax_untreated : bool }
 
+val fio2_threshold : int
+
 type respiratorySupport =
 | RoomAir
 | CPAP
@@ -105,11 +107,7 @@ type respiratorySupport =
 type cPAPTrialState = { cpap_pressure_cmh2o : int;
                         cpap_duration_minutes : int; fio2_on_cpap : fio2_pct }
 
-val cpap_fio2_failure_threshold : int
-
 val cpap_min_pressure : int
-
-val fio2_threshold : int
 
 type ph_scaled = int
 

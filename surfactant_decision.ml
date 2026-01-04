@@ -276,6 +276,13 @@ type contraindications = { congenital_diaphragmatic_hernia : bool;
                            active_pulmonary_hemorrhage : bool;
                            pneumothorax_untreated : bool }
 
+(** val fio2_threshold : int **)
+
+let fio2_threshold =
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ 0)))))))))))))))))))))))))))))
+
 type respiratorySupport =
 | RoomAir
 | CPAP
@@ -284,24 +291,10 @@ type respiratorySupport =
 type cPAPTrialState = { cpap_pressure_cmh2o : int;
                         cpap_duration_minutes : int; fio2_on_cpap : fio2_pct }
 
-(** val cpap_fio2_failure_threshold : int **)
-
-let cpap_fio2_failure_threshold =
-  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-    (succ (succ (succ (succ (succ (succ 0)))))))))))))))))))))))))))))
-
 (** val cpap_min_pressure : int **)
 
 let cpap_min_pressure =
   succ (succ (succ (succ (succ (succ 0)))))
-
-(** val fio2_threshold : int **)
-
-let fio2_threshold =
-  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-    (succ (succ (succ (succ (succ (succ 0)))))))))))))))))))))))))))))
 
 type ph_scaled = int
 
@@ -579,8 +572,7 @@ module SurfactantDecision =
   (** val cpap_failed_dec : int -> fio2_pct -> bool **)
 
   let cpap_failed_dec pressure fio2 =
-    (&&) (Nat.leb cpap_min_pressure pressure)
-      (Nat.ltb cpap_fio2_failure_threshold fio2)
+    (&&) (Nat.leb cpap_min_pressure pressure) (Nat.ltb fio2_threshold fio2)
 
   (** val acidosis_dec : ph_scaled -> pco2_mmhg -> bool **)
 
@@ -636,41 +628,61 @@ module SurfactantDecision =
           ((&&)
             ((&&)
               ((&&)
-                (Nat.leb (succ (succ (succ (succ (succ (succ (succ (succ
-                  (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-                  (succ (succ (succ (succ 0)))))))))))))))))))))) p.ga_weeks)
-                (Nat.leb p.ga_weeks (succ (succ (succ (succ (succ (succ (succ
-                  (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-                  (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-                  (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-                  (succ (succ (succ (succ (succ
-                  0))))))))))))))))))))))))))))))))))))))))))))
-              (Nat.leb p.ga_days (succ (succ (succ (succ (succ (succ 0))))))))
-            (Nat.leb (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
-              (succ
-              0))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
-              p.birth_weight))
-          (Nat.leb p.birth_weight
-            (of_num_uint (UIntDecimal (D6 (D0 (D0 (D0 Nil))))))))
+                ((&&)
+                  (Nat.leb (succ (succ (succ (succ (succ (succ (succ (succ
+                    (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                    (succ (succ (succ (succ (succ 0))))))))))))))))))))))
+                    p.ga_weeks)
+                  (Nat.leb p.ga_weeks (succ (succ (succ (succ (succ (succ
+                    (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                    (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                    (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                    (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                    0))))))))))))))))))))))))))))))))))))))))))))
+                (Nat.leb p.ga_days (succ (succ (succ (succ (succ (succ
+                  0))))))))
+              (Nat.leb (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+                (succ
+                0))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+                p.birth_weight))
+            (Nat.leb p.birth_weight
+              (of_num_uint (UIntDecimal (D6 (D0 (D0 (D0 Nil))))))))
+          (Nat.leb p.age_hours (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+            (succ (succ (succ (succ (succ (succ (succ
+            0))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
         (Nat.leb (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
           (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
           0))))))))))))))))))))) p.current_fio2))
