@@ -953,13 +953,34 @@ Proof.
   exact cdh_is_contraindication.
 Qed.
 
-(** Theorem: Not indicated implies withholding is appropriate. *)
-Theorem withhold_when_not_indicated :
+(** Theorem: Well infant (GA >= 26, FiO2 <= 30) is never indicated.
+    This is substantive: proves the decision logic correctly excludes
+    term or near-term infants not in respiratory distress. *)
+Theorem well_infant_not_indicated :
   forall p signs,
-    ~ surfactant_indicated p signs ->
-    ~ (surfactant_indicated p signs).
+    ga_weeks p >= 26 ->
+    current_fio2 p <= fio2_threshold ->
+    ~ surfactant_indicated p signs.
 Proof.
-  intros p signs Hnot. exact Hnot.
+  intros p signs Hga Hfio2.
+  unfold surfactant_indicated. intros [Hpro | Hres].
+  - unfold prophylactic_indicated, prophylactic_eligible_ga,
+      prophylactic_ga_threshold in Hpro.
+    lia.
+  - unfold rescue_indicated in Hres. destruct Hres as [Hfio2_elev _].
+    unfold fio2_elevated in Hfio2_elev. lia.
+Qed.
+
+(** Theorem: Withholding from well infant does not miss indication. *)
+Theorem withhold_well_infant_safe :
+  forall p signs c dose,
+    ga_weeks p >= 26 ->
+    current_fio2 p <= fio2_threshold ->
+    ~ safe_to_give p signs c dose.
+Proof.
+  intros p signs c dose Hga Hfio2.
+  unfold safe_to_give. intros [_ [Hind _]].
+  apply (well_infant_not_indicated p signs Hga Hfio2). exact Hind.
 Qed.
 
 (** Theorem: Dose from calculation is bounded for valid weights.
