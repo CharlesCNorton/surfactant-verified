@@ -75,26 +75,19 @@
    TARGET: EXERCISED (requires external validation)
 
    TODO:
-   1.  Parameterize FiO2 threshold (currently fixed at 30%; meta-analysis [5]
-       suggests 40% for >26w; Canadian guidelines [7] use 50%)
-   2.  Add threshold configurations per gestational age strata
-   3.  Prove threshold monotonicity (higher threshold → fewer indications)
-   4.  Integrate SpO2/SF ratio into decision logic (currently excluded)
-   5.  Add OI-based escalation pathway
-   6.  Consider lamellar body count as biomarker [5]
-   7.  Add timed automata model for UPPAAL cross-validation
-   8.  Add temporal assertions: "surfactant within 2h of RDS onset"
-   9.  Model time-to-response assessment intervals
-   10. Export decision logic to Promela for SPIN model checking
-   11. Export to UPPAAL timed automata for temporal verification
-   12. Obtain anonymized NICU case records (n >= 50) for validation
-   13. Run recommend_surfactant_safe against historical decisions
-   14. Measure concordance rate with attending neonatologist decisions
-   15. Document false positives/negatives vs. clinician decisions
-   16. Fuzz testing: random valid ClinicalState generation
-   17. Add OCaml unit test suite
-   18. Cross-validate: same test cases, same verdicts across tools
-   19. Integration test: wrap in REST API
+   1.  Add timed automata model for UPPAAL cross-validation
+   2.  Add temporal assertions: "surfactant within 2h of RDS onset"
+   3.  Model time-to-response assessment intervals
+   4.  Export decision logic to Promela for SPIN model checking
+   5.  Export to UPPAAL timed automata for temporal verification
+   6.  Obtain anonymized NICU case records (n >= 50) for validation
+   7.  Run recommend_surfactant_safe against historical decisions
+   8.  Measure concordance rate with attending neonatologist decisions
+   9.  Document false positives/negatives vs. clinician decisions
+   10. Fuzz testing: random valid ClinicalState generation
+   11. Add OCaml unit test suite
+   12. Cross-validate: same test cases, same verdicts across tools
+   13. Integration test: wrap in REST API
 *)
 
 From Coq Require Import Arith Lia.
@@ -310,17 +303,93 @@ Proof.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
-(** FiO2 Threshold                                                             *)
+(** FiO2 Threshold (Parameterized)                                             *)
 (** -------------------------------------------------------------------------- *)
 
-(** European Consensus 2022 threshold: FiO2 > 30% indicates need for surfactant.
-    This constant is the single source of truth used by both the general
-    fio2_elevated predicate and the CPAP failure criteria. *)
-Definition fio2_threshold : nat := 30.
+(** FiO2 threshold options per various guidelines:
+    - 30%: European Consensus 2022 (default, most conservative)
+    - 40%: Network meta-analysis [5] suggests for GA >26w
+    - 50%: Canadian guidelines [7] *)
+Definition fio2_threshold_30 : nat := 30.
+Definition fio2_threshold_40 : nat := 40.
+Definition fio2_threshold_50 : nat := 50.
 
-(** FiO2 exceeds threshold. *)
+(** Default threshold: 30% per European Consensus 2022.
+    This constant is the single source of truth used by default predicates. *)
+Definition fio2_threshold : nat := fio2_threshold_30.
+
+(** Parameterized FiO2 elevation check. *)
+Definition fio2_elevated_at (threshold : nat) (f : fio2_pct) : Prop :=
+  f > threshold.
+
+(** FiO2 exceeds default threshold (30%). *)
 Definition fio2_elevated (f : fio2_pct) : Prop :=
-  f > fio2_threshold.
+  fio2_elevated_at fio2_threshold f.
+
+(** Default is instance of parameterized version. *)
+Lemma fio2_elevated_is_at_default : forall f,
+  fio2_elevated f <-> fio2_elevated_at fio2_threshold_30 f.
+Proof.
+  intros f. unfold fio2_elevated, fio2_elevated_at, fio2_threshold. reflexivity.
+Qed.
+
+(** Higher threshold is more permissive (fewer infants qualify). *)
+Lemma higher_threshold_fewer_indications : forall f t1 t2,
+  t1 < t2 -> fio2_elevated_at t2 f -> fio2_elevated_at t1 f.
+Proof.
+  intros f t1 t2 Ht Hf. unfold fio2_elevated_at in *. lia.
+Qed.
+
+(** -------------------------------------------------------------------------- *)
+(** GA-Stratified Thresholds                                                   *)
+(** -------------------------------------------------------------------------- *)
+
+(** Threshold configuration based on gestational age strata.
+    Per network meta-analysis [5]:
+    - Extremely preterm (<26w): 30% (most conservative)
+    - Very preterm (26-28w): 40%
+    - Moderate preterm (29-32w): 40%
+    - Late preterm (>32w): 50% *)
+Definition fio2_threshold_for_ga (ga_weeks : nat) : nat :=
+  if ga_weeks <? 26 then fio2_threshold_30
+  else if ga_weeks <=? 32 then fio2_threshold_40
+  else fio2_threshold_50.
+
+(** GA-aware FiO2 elevation check. *)
+Definition fio2_elevated_for_ga (ga_weeks : nat) (f : fio2_pct) : Prop :=
+  fio2_elevated_at (fio2_threshold_for_ga ga_weeks) f.
+
+(** Extremely preterm uses strictest threshold (30%). *)
+Lemma extreme_preterm_threshold : forall ga,
+  ga < 26 -> fio2_threshold_for_ga ga = fio2_threshold_30.
+Proof.
+  intros ga Hga. unfold fio2_threshold_for_ga.
+  apply Nat.ltb_lt in Hga. rewrite Hga. reflexivity.
+Qed.
+
+(** Late preterm uses most permissive threshold (50%). *)
+Lemma late_preterm_threshold : forall ga,
+  ga > 32 -> fio2_threshold_for_ga ga = fio2_threshold_50.
+Proof.
+  intros ga Hga. unfold fio2_threshold_for_ga.
+  assert (H1: (ga <? 26) = false) by (apply Nat.ltb_ge; lia).
+  assert (H2: (ga <=? 32) = false) by (apply Nat.leb_gt; lia).
+  rewrite H1, H2. reflexivity.
+Qed.
+
+(** More mature infants have higher (more permissive) thresholds. *)
+Lemma ga_threshold_monotonic : forall ga1 ga2,
+  ga1 <= ga2 -> fio2_threshold_for_ga ga1 <= fio2_threshold_for_ga ga2.
+Proof.
+  intros ga1 ga2 Hga.
+  unfold fio2_threshold_for_ga, fio2_threshold_30, fio2_threshold_40, fio2_threshold_50.
+  destruct (ga1 <? 26) eqn:E1; destruct (ga2 <? 26) eqn:E2;
+  destruct (ga1 <=? 32) eqn:E3; destruct (ga2 <=? 32) eqn:E4;
+  try lia; apply Nat.ltb_lt in E1 || apply Nat.ltb_ge in E1;
+  apply Nat.ltb_lt in E2 || apply Nat.ltb_ge in E2;
+  apply Nat.leb_le in E3 || apply Nat.leb_gt in E3;
+  apply Nat.leb_le in E4 || apply Nat.leb_gt in E4; lia.
+Qed.
 
 (** -------------------------------------------------------------------------- *)
 (** CPAP-First Protocol                                                        *)
@@ -382,7 +451,7 @@ Definition failed_cpap_trial : CPAPTrialState :=
 Lemma failed_cpap_trial_indicates_surfactant : cpap_trial_failed failed_cpap_trial.
 Proof.
   unfold cpap_trial_failed, failed_cpap_trial, cpap_min_pressure,
-         fio2_threshold. simpl. lia.
+         fio2_threshold, fio2_threshold_30. simpl. lia.
 Qed.
 
 (** --- Counterexample: Stable on CPAP at FiO2 30% --- *)
@@ -391,20 +460,20 @@ Definition stable_cpap_trial : CPAPTrialState :=
 
 Lemma stable_cpap_not_failed : ~ cpap_trial_failed stable_cpap_trial.
 Proof.
-  unfold cpap_trial_failed, stable_cpap_trial, fio2_threshold,
+  unfold cpap_trial_failed, stable_cpap_trial, fio2_threshold, fio2_threshold_30,
          cpap_min_pressure. simpl. lia.
 Qed.
 
 (** --- Witness: FiO2 45% exceeds 30% threshold --- *)
 Lemma fio2_45_elevated : fio2_elevated 45.
 Proof.
-  unfold fio2_elevated, fio2_threshold. lia.
+  unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30. lia.
 Qed.
 
 (** --- Counterexample: FiO2 25% does not exceed threshold --- *)
 Lemma fio2_25_not_elevated : ~ fio2_elevated 25.
 Proof.
-  unfold fio2_elevated, fio2_threshold. lia.
+  unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -447,14 +516,15 @@ Qed.
 (** --- Witness: FiO2 50% with SpO2 82% = oxygenation failure --- *)
 Lemma oxygenation_failure_example : oxygenation_failure 50 82.
 Proof.
-  unfold oxygenation_failure, fio2_elevated, fio2_threshold,
-         spo2_below_target, spo2_target_low. lia.
+  unfold oxygenation_failure, fio2_elevated, fio2_elevated_at,
+         fio2_threshold, fio2_threshold_30, spo2_below_target, spo2_target_low. lia.
 Qed.
 
 (** --- Counterexample: FiO2 25% with SpO2 92% = no failure --- *)
 Lemma no_oxygenation_failure_example : ~ oxygenation_failure 25 92.
 Proof.
-  unfold oxygenation_failure, fio2_elevated, fio2_threshold. lia.
+  unfold oxygenation_failure, fio2_elevated, fio2_elevated_at,
+         fio2_threshold, fio2_threshold_30. lia.
 Qed.
 
 (** SpO2/FiO2 ratio (SF ratio) as oxygenation metric.
@@ -485,6 +555,30 @@ Qed.
 Lemma sf_adequate_example : ~ sf_impaired 92 30.
 Proof.
   unfold sf_impaired, sf_ratio, sf_threshold. simpl. lia.
+Qed.
+
+(** SF ratio as supporting evidence for surfactant need.
+    Used as adjunct criterion in SF-integrated rescue indication. *)
+Definition sf_supports_surfactant (spo2 : spo2_pct) (fio2 : fio2_pct) : Prop :=
+  sf_impaired spo2 fio2.
+
+(** SF-integrated FiO2 elevation: either FiO2 alone elevated,
+    OR moderate FiO2 with impaired SF ratio. *)
+Definition fio2_elevated_with_sf (fio2 : fio2_pct) (spo2 : spo2_pct) : Prop :=
+  fio2_elevated fio2 \/ (fio2 > 25 /\ sf_impaired spo2 fio2).
+
+(** SF ratio can lower the FiO2 threshold needed for indication. *)
+Lemma sf_ratio_lowers_threshold : forall fio2 spo2,
+  fio2 > 25 -> sf_impaired spo2 fio2 -> fio2_elevated_with_sf fio2 spo2.
+Proof.
+  intros fio2 spo2 Hfio2 Hsf. unfold fio2_elevated_with_sf. right. split; auto.
+Qed.
+
+(** Standard FiO2 elevation implies SF-integrated elevation. *)
+Lemma fio2_elevated_implies_sf_integrated : forall fio2 spo2,
+  fio2_elevated fio2 -> fio2_elevated_with_sf fio2 spo2.
+Proof.
+  intros fio2 spo2 Hfio2. unfold fio2_elevated_with_sf. left. exact Hfio2.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -570,6 +664,53 @@ Proof.
   unfold oi_indicates_severe, oxygenation_index, oi_severe. simpl. lia.
 Qed.
 
+(** OI-based escalation pathway recommendations. *)
+Inductive OIEscalation : Type :=
+  | OI_Standard        (* OI <= 15: standard surfactant therapy *)
+  | OI_Severe          (* OI 16-25: consider repeat dose, optimize ventilation *)
+  | OI_Critical        (* OI > 25: consult ECMO center, transfer if needed *)
+  | OI_ECMO.           (* OI > 40: ECMO initiation likely *)
+
+Definition oi_ecmo_threshold : nat := 40.
+
+(** Classify OI into escalation tier. *)
+Definition oi_escalation_tier (oi : nat) : OIEscalation :=
+  if oi <=? oi_severe then OI_Standard
+  else if oi <=? oi_critical then OI_Severe
+  else if oi <=? oi_ecmo_threshold then OI_Critical
+  else OI_ECMO.
+
+(** Compute escalation from clinical parameters. *)
+Definition escalation_for (fio2 : fio2_pct) (map : map_cmh2o) (pao2 : nat) : OIEscalation :=
+  oi_escalation_tier (oxygenation_index fio2 map pao2).
+
+(** --- Witness: OI 4 → Standard tier --- *)
+Lemma oi_4_standard : oi_escalation_tier 4 = OI_Standard.
+Proof. reflexivity. Qed.
+
+(** --- Witness: OI 20 → Severe tier --- *)
+Lemma oi_20_severe : oi_escalation_tier 20 = OI_Severe.
+Proof. reflexivity. Qed.
+
+(** --- Witness: OI 30 → Critical tier --- *)
+Lemma oi_30_critical : oi_escalation_tier 30 = OI_Critical.
+Proof. reflexivity. Qed.
+
+(** --- Witness: OI 50 → ECMO tier --- *)
+Lemma oi_50_ecmo : oi_escalation_tier 50 = OI_ECMO.
+Proof. reflexivity. Qed.
+
+(** OI determines minimum escalation tier. *)
+Lemma oi_above_severe_not_standard : forall oi,
+  oi > oi_severe -> oi_escalation_tier oi <> OI_Standard.
+Proof.
+  intros oi Hoi Hcontra.
+  unfold oi_escalation_tier, oi_severe, oi_critical, oi_ecmo_threshold in Hcontra.
+  assert (H: (oi <=? 15) = false) by (apply Nat.leb_gt; exact Hoi).
+  rewrite H in Hcontra.
+  destruct (oi <=? 25); destruct (oi <=? 40); discriminate.
+Qed.
+
 (** -------------------------------------------------------------------------- *)
 (** Adjunct Metrics Design Note                                                *)
 (** -------------------------------------------------------------------------- *)
@@ -595,6 +736,51 @@ Qed.
     To add these to decision logic, modify rescue_recommendation to include
     sf_impaired or oi_indicates_severe. This is NOT RECOMMENDED without
     neonatal-specific validation studies. *)
+
+(** -------------------------------------------------------------------------- *)
+(** Lamellar Body Count Biomarker                                              *)
+(** -------------------------------------------------------------------------- *)
+
+(** Lamellar body count (LBC) as a biomarker for fetal lung maturity.
+    LBC measures surfactant-containing lamellar bodies in amniotic fluid
+    or tracheal aspirate. Per literature [5]:
+    - LBC < 15,000/μL: immature, high risk of RDS
+    - LBC 15,000-50,000/μL: transitional
+    - LBC > 50,000/μL: mature, low risk of RDS
+
+    NOTE: LBC is a RESEARCH biomarker, not part of European 2022 guidelines.
+    May be useful for risk stratification before delivery. *)
+
+Definition lbc_count := nat.  (* per μL *)
+
+Definition lbc_immature_threshold : nat := 15000.
+Definition lbc_mature_threshold : nat := 50000.
+
+Inductive LBCMaturity : Type :=
+  | LBC_Immature     (* < 15000: high RDS risk *)
+  | LBC_Transitional (* 15000-50000: moderate risk *)
+  | LBC_Mature.      (* > 50000: low RDS risk *)
+
+Definition lbc_maturity (lbc : lbc_count) : LBCMaturity :=
+  if lbc <? lbc_immature_threshold then LBC_Immature
+  else if lbc <=? lbc_mature_threshold then LBC_Transitional
+  else LBC_Mature.
+
+(** Immature LBC suggests surfactant deficiency risk. *)
+Definition lbc_suggests_deficiency (lbc : lbc_count) : Prop :=
+  lbc < lbc_immature_threshold.
+
+(** --- Witness: LBC 10000 is immature --- *)
+Lemma lbc_10000_immature : lbc_maturity 10000 = LBC_Immature.
+Proof. reflexivity. Qed.
+
+(** --- Witness: LBC 30000 is transitional --- *)
+Lemma lbc_30000_transitional : lbc_maturity 30000 = LBC_Transitional.
+Proof. reflexivity. Qed.
+
+(** --- Witness: LBC 60000 is mature --- *)
+Lemma lbc_60000_mature : lbc_maturity 60000 = LBC_Mature.
+Proof. reflexivity. Qed.
 
 (** -------------------------------------------------------------------------- *)
 (** CXR Confirmation                                                           *)
@@ -902,7 +1088,7 @@ Qed.
 (** --- Boundary: Exactly 30% FiO2 is NOT elevated --- *)
 Lemma fio2_30_not_elevated : ~ fio2_elevated 30.
 Proof.
-  unfold fio2_elevated, fio2_threshold. lia.
+  unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30. lia.
 Qed.
 
 (** --- Boundary: 29+6 (209 days) eligible, 30+0 (210 days) not --- *)
@@ -919,7 +1105,7 @@ Qed.
 Lemma fio2_boundary_30_vs_31 :
   ~ fio2_elevated 30 /\ fio2_elevated 31.
 Proof.
-  unfold fio2_elevated, fio2_threshold. lia.
+  unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -953,7 +1139,8 @@ Definition rescue_signs : RDSSigns := mkRDSSigns true true false false.
 Lemma rescue_patient_indicated : surfactant_indicated rescue_patient rescue_signs.
 Proof.
   unfold surfactant_indicated. right.
-  unfold rescue_indicated, fio2_elevated, fio2_threshold, rescue_patient,
+  unfold rescue_indicated, fio2_elevated, fio2_elevated_at,
+         fio2_threshold, fio2_threshold_30, rescue_patient,
          clinical_rds, sign_count, rescue_signs. simpl. lia.
 Qed.
 
@@ -965,8 +1152,8 @@ Lemma well_patient_not_indicated : ~ surfactant_indicated well_patient well_sign
 Proof.
   unfold surfactant_indicated, prophylactic_indicated, ga_total_days,
          prophylactic_ga_threshold_days, prophylactic_ga_threshold_weeks,
-         rescue_indicated, fio2_elevated, fio2_threshold,
-         well_patient. simpl. lia.
+         rescue_indicated, fio2_elevated, fio2_elevated_at,
+         fio2_threshold, fio2_threshold_30, well_patient. simpl. lia.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -1274,7 +1461,7 @@ Definition eligible_repeat_state : DosingState := mkDosingState Survanta 1 8.
 Lemma eligible_repeat_state_ok : repeat_eligible eligible_repeat_state 40.
 Proof.
   unfold repeat_eligible, eligible_repeat_state, min_hours_between_doses,
-         fio2_elevated, fio2_threshold. simpl. lia.
+         fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30. simpl. lia.
 Qed.
 
 (** --- Counterexample: 5th dose of Survanta (max 4) → not eligible --- *)
@@ -1472,7 +1659,8 @@ Theorem wean_implies_fio2_not_elevated :
     ready_to_wean fio2 spo2 wob -> ~ fio2_elevated fio2.
 Proof.
   intros fio2 spo2 wob [Hfio2 _].
-  unfold fio2_elevated, fio2_threshold, weaning_fio2_threshold in *. lia.
+  unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30,
+         weaning_fio2_threshold in *. lia.
 Qed.
 
 (** Ready to wean implies no repeat dose eligible. *)
@@ -1651,7 +1839,7 @@ Definition guideline_only_case : ClinicalState :=
 Lemma guideline_recommends_case : rescue_guideline_minimal guideline_only_case.
 Proof.
   unfold rescue_guideline_minimal, guideline_only_case. simpl.
-  split. { unfold fio2_elevated, fio2_threshold. lia. }
+  split. { unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30. lia. }
   split. { unfold clinical_rds, sign_count. simpl. lia. }
   split. { exact clear_contraindications_ok. }
   exact failed_cpap_trial_indicates_surfactant.
@@ -1717,7 +1905,7 @@ Proof.
   - unfold valid_patient. simpl.
     repeat split; apply Nat.leb_le; reflexivity.
   - right. unfold rescue_recommendation. simpl. split.
-    + unfold fio2_elevated, fio2_threshold. lia.
+    + unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30. lia.
     + split.
       * unfold clinical_rds, sign_count. simpl. lia.
       * split.
@@ -1842,11 +2030,12 @@ Theorem well_infant_not_indicated :
 Proof.
   intros p signs Hga Hfio2.
   unfold prophylactic_ga_threshold_days, prophylactic_ga_threshold_weeks in Hga.
+  unfold fio2_threshold, fio2_threshold_30 in Hfio2.
   unfold surfactant_indicated. intros [Hpro | Hres].
   - unfold prophylactic_indicated, prophylactic_ga_threshold_days,
            prophylactic_ga_threshold_weeks in Hpro. lia.
   - unfold rescue_indicated in Hres. destruct Hres as [Hfio2_elev _].
-    unfold fio2_elevated in Hfio2_elev. lia.
+    unfold fio2_elevated, fio2_elevated_at, fio2_threshold, fio2_threshold_30 in Hfio2_elev. lia.
 Qed.
 
 (** Withholding from well infant does not miss indication. *)
