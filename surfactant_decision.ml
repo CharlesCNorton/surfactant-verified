@@ -318,6 +318,13 @@ type cPAPTrialState = { cpap_pressure_cmh2o : int;
 let cpap_min_pressure =
   succ (succ (succ (succ (succ (succ 0)))))
 
+(** val cpap_min_duration_minutes : int **)
+
+let cpap_min_duration_minutes =
+  succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ
+    (succ (succ (succ (succ (succ (succ 0)))))))))))))))))))))))))))))
+
 type ph_scaled = int
 
 type pco2_mmhg = int
@@ -731,6 +738,22 @@ module SurfactantDecision =
 
   let cpap_failed_dec pressure fio2 =
     (&&) (Nat.leb cpap_min_pressure pressure) (Nat.ltb fio2_threshold fio2)
+
+  (** val cpap_duration_sufficient_at_dec : int -> cPAPTrialState -> bool **)
+
+  let cpap_duration_sufficient_at_dec threshold trial =
+    Nat.leb threshold trial.cpap_duration_minutes
+
+  (** val cpap_duration_sufficient_dec : cPAPTrialState -> bool **)
+
+  let cpap_duration_sufficient_dec trial =
+    cpap_duration_sufficient_at_dec cpap_min_duration_minutes trial
+
+  (** val cpap_failed_with_duration_at_dec : int -> cPAPTrialState -> bool **)
+
+  let cpap_failed_with_duration_at_dec threshold trial =
+    (&&) (cpap_failed_dec trial.cpap_pressure_cmh2o trial.fio2_on_cpap)
+      (cpap_duration_sufficient_at_dec threshold trial)
 
   (** val acidosis_dec : ph_scaled -> pco2_mmhg -> bool **)
 

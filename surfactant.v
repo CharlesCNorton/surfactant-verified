@@ -82,11 +82,10 @@
    5.  Prove formal refinement linking Coq semantics to SPIN/UPPAAL models
    6.  Validate local policy dose caps (400/600/420mg) against institutional data
    7.  Confirm LISA GA threshold (≥25w) against multi-center practice variation
-   8.  Parameterize CPAP minimum duration gate (30 min) per institutional policy
-   9.  Validate blood gas thresholds (pH<7.20, pCO2>60) against neonatal studies
-   10. Add formal verification for server.py and HTTP API pathway
-   11. Clinically validate product-specific prophylactic timing (15 vs 30 min)
-   12. Handle edge cases where imaging contradicts clinical presentation
+   8.  Validate blood gas thresholds (pH<7.20, pCO2>60) against neonatal studies
+   9.  Add formal verification for server.py and HTTP API pathway
+   10. Clinically validate product-specific prophylactic timing (15 vs 30 min)
+   11. Handle edge cases where imaging contradicts clinical presentation
 
    ALTERNATIVE VALIDATION METHOD (no IRB required):
    Literature-based case extraction enables validation against published
@@ -486,20 +485,52 @@ Definition cpap_trial_failed (trial : CPAPTrialState) : Prop :=
     Default: 30 minutes (configurable per institutional policy). *)
 Definition cpap_min_duration_minutes : nat := 30.
 
-(** Check if CPAP trial duration is sufficient per local policy. *)
+(** Parameterized duration sufficiency check.
+    Allows institutions to specify their own minimum duration threshold. *)
+Definition cpap_duration_sufficient_at (threshold : nat) (trial : CPAPTrialState) : Prop :=
+  cpap_duration_minutes trial >= threshold.
+
+(** Check if CPAP trial duration is sufficient per default policy (30 min). *)
 Definition cpap_duration_sufficient (trial : CPAPTrialState) : Prop :=
-  cpap_duration_minutes trial >= cpap_min_duration_minutes.
+  cpap_duration_sufficient_at cpap_min_duration_minutes trial.
+
+(** Default is instance of parameterized version. *)
+Lemma cpap_duration_sufficient_is_at_default : forall trial,
+  cpap_duration_sufficient trial <-> cpap_duration_sufficient_at cpap_min_duration_minutes trial.
+Proof.
+  intros trial. unfold cpap_duration_sufficient. reflexivity.
+Qed.
+
+(** Higher threshold is stricter (fewer trials qualify). *)
+Lemma higher_duration_threshold_stricter : forall trial t1 t2,
+  t1 <= t2 -> cpap_duration_sufficient_at t2 trial -> cpap_duration_sufficient_at t1 trial.
+Proof.
+  intros trial t1 t2 Ht Hsuff. unfold cpap_duration_sufficient_at in *. lia.
+Qed.
+
+(** Parameterized CPAP trial failure with duration gate.
+    Allows institutions to specify their own minimum duration. *)
+Definition cpap_trial_failed_with_duration_at (threshold : nat) (trial : CPAPTrialState) : Prop :=
+  cpap_trial_failed trial /\ cpap_duration_sufficient_at threshold trial.
 
 (** CPAP trial failed with duration gate (optional stricter criterion).
-    Requires: pressure, FiO2, AND minimum duration before declaring failure. *)
+    Requires: pressure, FiO2, AND minimum duration before declaring failure.
+    Uses default 30-minute threshold. *)
 Definition cpap_trial_failed_with_duration (trial : CPAPTrialState) : Prop :=
-  cpap_trial_failed trial /\ cpap_duration_sufficient trial.
+  cpap_trial_failed_with_duration_at cpap_min_duration_minutes trial.
 
 (** Duration-gated failure is stricter than standard failure. *)
 Lemma duration_gate_stricter :
   forall trial, cpap_trial_failed_with_duration trial -> cpap_trial_failed trial.
 Proof.
   intros trial [Hfailed _]. exact Hfailed.
+Qed.
+
+(** Parameterized version also stricter than standard. *)
+Lemma duration_gate_stricter_at :
+  forall threshold trial, cpap_trial_failed_with_duration_at threshold trial -> cpap_trial_failed trial.
+Proof.
+  intros threshold trial [Hfailed _]. exact Hfailed.
 Qed.
 
 (** --- Witness: CPAP failure at FiO2 50% on 7 cmH2O --- *)
@@ -2371,6 +2402,36 @@ Module SurfactantDecision.
   Proof.
     intros trial. unfold cpap_failed_dec, cpap_trial_failed.
     rewrite Bool.andb_true_iff, Nat.leb_le, Nat.ltb_lt. reflexivity.
+  Qed.
+
+  (** Parameterized CPAP duration check. *)
+  Definition cpap_duration_sufficient_at_dec (threshold : nat) (trial : CPAPTrialState) : bool :=
+    threshold <=? cpap_duration_minutes trial.
+
+  Lemma cpap_duration_sufficient_at_reflect : forall threshold trial,
+    cpap_duration_sufficient_at_dec threshold trial = true <->
+    cpap_duration_sufficient_at threshold trial.
+  Proof.
+    intros threshold trial. unfold cpap_duration_sufficient_at_dec, cpap_duration_sufficient_at.
+    rewrite Nat.leb_le. lia.
+  Qed.
+
+  (** Default CPAP duration check (30 min). *)
+  Definition cpap_duration_sufficient_dec (trial : CPAPTrialState) : bool :=
+    cpap_duration_sufficient_at_dec cpap_min_duration_minutes trial.
+
+  (** Parameterized CPAP failure with duration gate. *)
+  Definition cpap_failed_with_duration_at_dec (threshold : nat) (trial : CPAPTrialState) : bool :=
+    cpap_failed_dec (cpap_pressure_cmh2o trial) (fio2_on_cpap trial) &&
+    cpap_duration_sufficient_at_dec threshold trial.
+
+  Lemma cpap_failed_with_duration_at_reflect : forall threshold trial,
+    cpap_failed_with_duration_at_dec threshold trial = true <->
+    cpap_trial_failed_with_duration_at threshold trial.
+  Proof.
+    intros threshold trial. unfold cpap_failed_with_duration_at_dec, cpap_trial_failed_with_duration_at.
+    rewrite Bool.andb_true_iff, cpap_failed_reflect, cpap_duration_sufficient_at_reflect.
+    reflexivity.
   Qed.
 
   (** Check respiratory acidosis. *)

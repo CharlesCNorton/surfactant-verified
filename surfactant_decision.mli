@@ -117,6 +117,8 @@ type cPAPTrialState = { cpap_pressure_cmh2o : int;
 
 val cpap_min_pressure : int
 
+val cpap_min_duration_minutes : int
+
 type ph_scaled = int
 
 type pco2_mmhg = int
@@ -192,6 +194,12 @@ module SurfactantDecision :
   val calc_vials_needed : surfactantProduct -> int -> int
 
   val cpap_failed_dec : int -> fio2_pct -> bool
+
+  val cpap_duration_sufficient_at_dec : int -> cPAPTrialState -> bool
+
+  val cpap_duration_sufficient_dec : cPAPTrialState -> bool
+
+  val cpap_failed_with_duration_at_dec : int -> cPAPTrialState -> bool
 
   val acidosis_dec : ph_scaled -> pco2_mmhg -> bool
 
