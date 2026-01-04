@@ -214,8 +214,9 @@ Record CPAPTrialState := mkCPAPTrialState {
   fio2_on_cpap : fio2_pct       (* FiO2 requirement while on CPAP *)
 }.
 
-(** CPAP failure threshold: FiO2 > 40% on CPAP pressure >= 6 cmH2O. *)
-Definition cpap_fio2_failure_threshold : nat := 40.
+(** CPAP failure threshold per European Consensus 2022:
+    FiO2 > 30% on CPAP pressure >= 6 cmH2O indicates surfactant needed. *)
+Definition cpap_fio2_failure_threshold : nat := 30.
 Definition cpap_min_pressure : nat := 6.
 
 (** CPAP trial has failed, surfactant needed. *)
