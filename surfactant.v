@@ -628,6 +628,43 @@ Proof. reflexivity. Qed.
 Lemma lisa_cpap_compatible : cpap_compatible LISA = true.
 Proof. reflexivity. Qed.
 
+(** LISA eligibility requirements:
+    1. Spontaneous breathing (not apneic)
+    2. GA >= 25 weeks (safer threshold for thin catheter)
+    3. Currently on CPAP (not intubated or room air) *)
+Definition lisa_ga_threshold : nat := 25.
+
+Definition lisa_eligible (ga : gestational_age) (support : RespiratorySupport)
+                         (breathing_spontaneously : bool) : Prop :=
+  ga >= lisa_ga_threshold /\
+  support = CPAP /\
+  breathing_spontaneously = true.
+
+(** --- Witness: 28w infant on CPAP, breathing → LISA eligible --- *)
+Lemma lisa_eligible_example : lisa_eligible 28 CPAP true.
+Proof.
+  unfold lisa_eligible, lisa_ga_threshold.
+  repeat split; try lia; try reflexivity.
+Qed.
+
+(** --- Counterexample: 24w infant too young for LISA --- *)
+Lemma lisa_24w_not_eligible : ~ lisa_eligible 24 CPAP true.
+Proof.
+  unfold lisa_eligible, lisa_ga_threshold. intros [Hga _]. lia.
+Qed.
+
+(** --- Counterexample: Intubated infant cannot receive LISA --- *)
+Lemma lisa_intubated_not_eligible : ~ lisa_eligible 28 Intubated true.
+Proof.
+  unfold lisa_eligible. intros [_ [Hsup _]]. discriminate.
+Qed.
+
+(** --- Counterexample: Apneic infant cannot receive LISA --- *)
+Lemma lisa_apneic_not_eligible : ~ lisa_eligible 28 CPAP false.
+Proof.
+  unfold lisa_eligible. intros [_ [_ Hbreath]]. discriminate.
+Qed.
+
 (** --- Properties: Conventional is most invasive --- *)
 Lemma conventional_requires_intubation : requires_intubation Conventional = true.
 Proof. reflexivity. Qed.
@@ -850,23 +887,6 @@ Proof. reflexivity. Qed.
 Lemma curosurf_800g_repeat_dose : repeat_dose Curosurf 800 = 80.
 Proof. reflexivity. Qed.
 
-(** Dose validity: must be positive and within reasonable bounds.
-    Max reasonable dose ~600mg for a 3kg infant at 200mg/kg. *)
-Definition dose_valid (dose : nat) : Prop :=
-  dose > 0 /\ dose <= 600.
-
-(** --- Witness: 160mg is valid --- *)
-Lemma dose_160_valid : dose_valid 160.
-Proof.
-  unfold dose_valid. lia.
-Qed.
-
-(** --- Counterexample: 800mg exceeds max --- *)
-Lemma dose_800_invalid : ~ dose_valid 800.
-Proof.
-  unfold dose_valid. lia.
-Qed.
-
 (** Product-specific maximum single doses per package insert.
     Survanta: 8 mL max = 200 mg phospholipids (25 mg/mL)
     Curosurf: 2.5 mL/kg at 80 mg/mL = 200 mg/kg, max ~600 mg for 3kg infant
@@ -877,6 +897,46 @@ Definition max_single_dose (prod : SurfactantProduct) : nat :=
   | Curosurf => 600  (* 200 mg/kg * 3 kg *)
   | Infasurf => 420  (* 105 mg/kg * 4 kg *)
   end.
+
+(** Product- and weight-aware dose validity.
+    Dose must be positive and within product-specific maximum. *)
+Definition dose_valid_for_product (prod : SurfactantProduct) (dose : nat) : Prop :=
+  dose > 0 /\ dose <= max_single_dose prod.
+
+(** Calculated dose validity: checks that calculated dose is within bounds. *)
+Definition calculated_dose_valid (prod : SurfactantProduct) (weight : weight_g)
+                                 (is_initial : bool) : Prop :=
+  let dose := if is_initial then initial_dose prod weight
+              else repeat_dose prod weight in
+  dose_valid_for_product prod dose.
+
+(** Legacy dose validity (conservative bound for any product). *)
+Definition dose_valid (dose : nat) : Prop :=
+  dose > 0 /\ dose <= 600.
+
+(** --- Witness: 160mg valid for Curosurf --- *)
+Lemma dose_160_valid_curosurf : dose_valid_for_product Curosurf 160.
+Proof.
+  unfold dose_valid_for_product, max_single_dose. lia.
+Qed.
+
+(** --- Witness: 400mg valid for Survanta (at max) --- *)
+Lemma dose_400_valid_survanta : dose_valid_for_product Survanta 400.
+Proof.
+  unfold dose_valid_for_product, max_single_dose. lia.
+Qed.
+
+(** --- Counterexample: 500mg exceeds Survanta max --- *)
+Lemma dose_500_invalid_survanta : ~ dose_valid_for_product Survanta 500.
+Proof.
+  unfold dose_valid_for_product, max_single_dose. lia.
+Qed.
+
+(** --- Counterexample: 700mg exceeds Curosurf max --- *)
+Lemma dose_700_invalid_curosurf : ~ dose_valid_for_product Curosurf 700.
+Proof.
+  unfold dose_valid_for_product, max_single_dose. lia.
+Qed.
 
 (** Per-product dose bounds for clinically appropriate weight ranges. *)
 Theorem initial_dose_bounded_survanta :
@@ -972,7 +1032,7 @@ Definition safe_repeat_dose (ds : DosingState) (fio2 : fio2_pct)
   no_contraindications c /\
   dose_valid dose.
 
-(** Theorem: Repeat dose is safe only when timing constraint met. *)
+(** Repeat dose is safe only when timing constraint met. *)
 Theorem repeat_safe_requires_timing :
   forall ds fio2 c dose,
     hours_since_last ds < min_hours_between_doses (product ds) ->
@@ -984,7 +1044,7 @@ Proof.
   lia.
 Qed.
 
-(** Theorem: Repeat dose is safe only when under max doses. *)
+(** Repeat dose is safe only when under max doses. *)
 Theorem repeat_safe_requires_under_max :
   forall ds fio2 c dose,
     doses_given ds >= max_doses (product ds) ->
@@ -996,7 +1056,7 @@ Proof.
   lia.
 Qed.
 
-(** Theorem: If all repeat criteria met, repeat is safe. *)
+(** All repeat criteria met implies repeat is safe. *)
 Theorem repeat_safe_when_eligible :
   forall ds fio2 c dose,
     repeat_eligible ds fio2 ->
@@ -1006,6 +1066,90 @@ Theorem repeat_safe_when_eligible :
 Proof.
   intros ds fio2 c dose Helig Hcontra Hdose.
   unfold safe_repeat_dose. auto.
+Qed.
+
+(** -------------------------------------------------------------------------- *)
+(** Non-Responder Pathway                                                       *)
+(** -------------------------------------------------------------------------- *)
+
+(** Surfactant response assessment: check if FiO2 improved post-dose.
+    Non-response suggests alternate diagnosis or need for repeat. *)
+Inductive SurfactantResponse : Type :=
+  | Responded        (* FiO2 decreased significantly post-dose *)
+  | PartialResponse  (* Some improvement but still elevated FiO2 *)
+  | NonResponder.    (* No improvement or worsening *)
+
+(** Response assessment based on FiO2 change. *)
+Definition assess_response (fio2_pre fio2_post : fio2_pct)
+                           (hours_post_dose : nat) : SurfactantResponse :=
+  if hours_post_dose <? 2 then
+    PartialResponse  (* Too early to assess *)
+  else if fio2_post <=? (fio2_pre - 10) then
+    Responded
+  else if fio2_post <? fio2_pre then
+    PartialResponse
+  else
+    NonResponder.
+
+(** Non-responder requires re-evaluation. *)
+Definition requires_reevaluation (resp : SurfactantResponse) : Prop :=
+  resp = NonResponder.
+
+(** Non-responder differential: conditions that mimic RDS but don't respond. *)
+Inductive NonResponderDifferential : Type :=
+  | PersistentPulmonaryHypertension
+  | CongenitalPneumonia
+  | CongenitalHeartDisease
+  | SurfactantProteinDeficiency
+  | AlveolarCapillaryDysplasia.
+
+(** --- Witness: 50% to 35% FiO2 at 3h = responded --- *)
+Lemma response_good_example : assess_response 50 35 3 = Responded.
+Proof. reflexivity. Qed.
+
+(** --- Witness: 50% to 52% FiO2 at 3h = non-responder (worsened) --- *)
+Lemma response_poor_example : assess_response 50 52 3 = NonResponder.
+Proof. reflexivity. Qed.
+
+(** --- Witness: Any assessment at 1h = partial (too early) --- *)
+Lemma response_early_example : assess_response 50 35 1 = PartialResponse.
+Proof. reflexivity. Qed.
+
+(** -------------------------------------------------------------------------- *)
+(** Weaning Criteria                                                            *)
+(** -------------------------------------------------------------------------- *)
+
+(** Weaning readiness thresholds. *)
+Definition weaning_fio2_threshold : nat := 25.  (* FiO2 <= 25% *)
+Definition weaning_spo2_low : nat := 90.        (* SpO2 >= 90% *)
+Definition weaning_spo2_high : nat := 94.       (* SpO2 <= 94% *)
+
+(** Ready to wean from respiratory support. *)
+Definition ready_to_wean (fio2 : fio2_pct) (spo2 : spo2_pct)
+                         (work_of_breathing_increased : bool) : Prop :=
+  fio2 <= weaning_fio2_threshold /\
+  spo2 >= weaning_spo2_low /\
+  spo2 <= weaning_spo2_high /\
+  work_of_breathing_increased = false.
+
+(** --- Witness: FiO2 21%, SpO2 92%, no WOB → ready to wean --- *)
+Lemma wean_ready_example : ready_to_wean 21 92 false.
+Proof.
+  unfold ready_to_wean, weaning_fio2_threshold,
+         weaning_spo2_low, weaning_spo2_high.
+  repeat split; try lia; try reflexivity.
+Qed.
+
+(** --- Counterexample: FiO2 35% → not ready --- *)
+Lemma wean_high_fio2_not_ready : ~ ready_to_wean 35 92 false.
+Proof.
+  unfold ready_to_wean, weaning_fio2_threshold. intros [Hfio2 _]. lia.
+Qed.
+
+(** --- Counterexample: Increased WOB → not ready --- *)
+Lemma wean_increased_wob_not_ready : ~ ready_to_wean 21 92 true.
+Proof.
+  unfold ready_to_wean. intros [_ [_ [_ Hwob]]]. discriminate.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -1162,7 +1306,16 @@ Definition safe_to_give (p : Patient) (signs : RDSSigns)
   no_contraindications c /\
   dose_valid dose.
 
-(** Theorem: If all preconditions met, administration is safe. *)
+(** Product-aware safe to give: uses product-specific dose limits. *)
+Definition safe_to_give_product (p : Patient) (signs : RDSSigns)
+                                (c : Contraindications)
+                                (prod : SurfactantProduct) (dose : nat) : Prop :=
+  valid_patient p /\
+  surfactant_indicated p signs /\
+  no_contraindications c /\
+  dose_valid_for_product prod dose.
+
+(** All preconditions met implies administration is safe. *)
 Theorem administration_safe :
   forall p signs c dose,
     valid_patient p ->
@@ -1175,8 +1328,21 @@ Proof.
   unfold safe_to_give. auto.
 Qed.
 
-(** Theorem: Any contraindication blocks safe administration.
-    This is the key safety property: even if indicated, contraindications
+(** Product-aware administration is safe when preconditions met. *)
+Theorem administration_safe_product :
+  forall p signs c prod dose,
+    valid_patient p ->
+    surfactant_indicated p signs ->
+    no_contraindications c ->
+    dose_valid_for_product prod dose ->
+    safe_to_give_product p signs c prod dose.
+Proof.
+  intros p signs c prod dose Hvalid Hind Hcontra Hdose.
+  unfold safe_to_give_product. auto.
+Qed.
+
+(** Any contraindication blocks safe administration.
+    Key safety property: even if indicated, contraindications
     must prevent administration. *)
 Theorem contraindication_blocks_administration :
   forall p signs c dose,
@@ -1202,8 +1368,8 @@ Proof.
   exact cdh_is_contraindication.
 Qed.
 
-(** Theorem: Well infant (GA >= 30, FiO2 <= 30) is never indicated.
-    This is substantive: proves the decision logic correctly excludes
+(** Well infant (GA >= 30, FiO2 <= 30) is never indicated.
+    Substantive: proves the decision logic correctly excludes
     term or near-term infants not in respiratory distress. *)
 Theorem well_infant_not_indicated :
   forall p signs,
@@ -1220,7 +1386,7 @@ Proof.
     unfold fio2_elevated in Hfio2_elev. lia.
 Qed.
 
-(** Theorem: Withholding from well infant does not miss indication. *)
+(** Withholding from well infant does not miss indication. *)
 Theorem withhold_well_infant_safe :
   forall p signs c dose,
     ga_weeks p >= 30 ->
@@ -1232,8 +1398,8 @@ Proof.
   apply (well_infant_not_indicated p signs Hga Hfio2). exact Hind.
 Qed.
 
-(** Theorem: Dose from calculation is bounded for valid weights.
-    Proof uses the fact that max weight 3000g * max rate 200mg/kg / 1000 = 600mg. *)
+(** Dose from calculation is bounded for valid weights.
+    Uses: max weight 3000g * max rate 200mg/kg / 1000 = 600mg. *)
 Theorem calculated_dose_bounded :
   forall prod weight,
     weight <= 3000 ->
@@ -1422,6 +1588,28 @@ Module SurfactantDecision.
 
       The valid_patient_dec check will catch out-of-range values, but
       negative values passed as OCaml int will behave unpredictably. *)
+
+  (** Input validation result. *)
+  Inductive InputValidation : Type :=
+    | InputValid
+    | InputInvalid (field : nat).  (* Field index that failed *)
+
+  (** Validate a single integer is non-negative and within bounds.
+      Since Coq nat is always >= 0, this is identity in Coq but serves
+      as documentation for OCaml callers. *)
+  Definition sanitize_nat (n : nat) (max : nat) : option nat :=
+    if n <=? max then Some n else None.
+
+  (** Validate patient inputs before constructing Patient record.
+      Returns None if any field is invalid. *)
+  Definition validate_patient_inputs (ga fio2 weight : nat) : option Patient :=
+    match sanitize_nat ga 42, sanitize_nat fio2 100, sanitize_nat weight 6000 with
+    | Some ga', Some fio2', Some w' =>
+        if andb (22 <=? ga') (andb (21 <=? fio2') (200 <=? w'))
+        then Some (mkPatient ga' w' 0 fio2')
+        else None
+    | _, _, _ => None
+    end.
 
   (** Recommendation result type for explicit validation feedback. *)
   Inductive RecommendationResult : Type :=
