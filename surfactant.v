@@ -52,18 +52,14 @@
 (** -------------------------------------------------------------------------- *)
 
 (**
-   1. Fix SF ratio comment: 264 approximates P/F 300 (mild ARDS), not P/F 200.
-      Rice 2007 mapping: SF ~235 ↔ P/F 200, SF ~264 ↔ P/F 300.
+   [DONE] 1. SF ratio: 264 ≈ P/F 300 (mild ARDS). See sf_threshold comment.
 
-   2. Fix OI threshold comments: neonatal ECMO threshold is typically OI > 40,
-      not > 25. Qualify as "transfer/consult" vs "ECMO initiation."
+   [DONE] 2. OI thresholds: ECMO > 40, transfer > 25. See oxygenation_index comment.
 
-   3. Document max_single_dose caps as weight-range modeling assumptions,
-      not direct label quotes. Add derivation (e.g., "Survanta 100mg/kg × 4kg").
+   [DONE] 3. max_single_dose: documented as weight-range modeling assumptions.
 
-   4. Document rescue pathway as "conservative" relative to European 2022.
-      Guideline: FiO2 > 30% on CPAP ≥6 sufficient. We require imaging OR
-      blood gas OR clinical_judgement flag.
+   [DONE] 4. rescue_recommendation: proved conservative vs guideline-minimal.
+             See conservative_implies_guideline, conservative_rejects_case.
 
    5. Add OCaml wrapper guidance for nat→int extraction safety. Options:
       - Keep Peano nat (slow but safe)
@@ -343,12 +339,16 @@ Qed.
 
 (** SpO2/FiO2 ratio (SF ratio) as oxygenation metric.
     SF ratio approximates PaO2/FiO2 (P/F ratio) noninvasively.
-    SF < 264 approximates P/F < 200 (ARDS threshold).
+    Per Rice 2007: SF ~235 ≈ P/F 200, SF ~264 ≈ P/F 300.
+    SF < 264 thus approximates P/F < 300 (mild ARDS boundary).
+    NOTE: SF ratio is an adjunct research metric, not part of
+    European 2022 RDS surfactant guidelines.
     Calculated as SpO2 * 100 / FiO2 to preserve integer arithmetic. *)
 Definition sf_ratio (spo2 : spo2_pct) (fio2 : fio2_pct) : nat :=
   spo2 * 100 / fio2.
 
-(** SF ratio threshold indicating significant oxygenation impairment. *)
+(** SF ratio threshold: 264 ≈ P/F 300 (mild ARDS/hypoxemia boundary).
+    For moderate ARDS (P/F < 200), use threshold ~235. *)
 Definition sf_threshold : nat := 264.
 
 (** SF ratio below threshold suggests surfactant need. *)
@@ -419,12 +419,18 @@ Definition map_cmh2o := nat.
 (** Oxygenation index: OI = (FiO2 × MAP) / PaO2.
     Since FiO2 is already percentage (not fraction), no ×100 needed.
     Integrates oxygen requirement with ventilator support intensity.
-    OI > 15 indicates severe hypoxemic respiratory failure.
-    OI > 25 may prompt ECMO consideration. *)
+    Thresholds (population-dependent):
+    - OI > 15-16: severe hypoxemia (PARDS criteria)
+    - OI > 25: consider transfer to ECMO-capable center
+    - OI > 40: typical neonatal ECMO initiation threshold
+    NOTE: OI is an adjunct severity metric, not part of European 2022
+    RDS surfactant guidelines. *)
 Definition oxygenation_index (fio2 : fio2_pct) (map : map_cmh2o) (pao2 : nat) : nat :=
   fio2 * map / pao2.
 
-(** OI thresholds for severity classification. *)
+(** OI thresholds for severity classification.
+    oi_severe: PARDS severe threshold (~16)
+    oi_critical: transfer/consult threshold (not ECMO initiation) *)
 Definition oi_severe : nat := 15.
 Definition oi_critical : nat := 25.
 
@@ -911,15 +917,20 @@ Proof. reflexivity. Qed.
 Lemma curosurf_800g_repeat_dose : repeat_dose Curosurf 800 = 80.
 Proof. reflexivity. Qed.
 
-(** Product-specific maximum single doses per package insert.
-    Survanta: 8 mL max = 200 mg phospholipids (25 mg/mL)
-    Curosurf: 2.5 mL/kg at 80 mg/mL = 200 mg/kg, max ~600 mg for 3kg infant
-    Infasurf: 3 mL/kg at 35 mg/mL = 105 mg/kg *)
+(** Product-specific maximum single doses.
+    NOTE: These are DERIVED MODELING ASSUMPTIONS for specific weight ranges,
+    not direct label quotes. FDA labels specify mg/kg (weight-based), not
+    absolute mg caps. Derivations:
+    - Survanta: 100 mg/kg × 4 kg assumed max = 400 mg
+    - Curosurf: 200 mg/kg × 3 kg assumed max = 600 mg
+    - Infasurf: 105 mg/kg × 4 kg assumed max = 420 mg
+    This formalization supports weights up to ~3-4 kg. For larger infants,
+    these caps may be too restrictive; consult actual label for dose/kg. *)
 Definition max_single_dose (prod : SurfactantProduct) : nat :=
   match prod with
-  | Survanta => 400  (* 100 mg/kg * 4 kg max practical weight *)
-  | Curosurf => 600  (* 200 mg/kg * 3 kg *)
-  | Infasurf => 420  (* 105 mg/kg * 4 kg *)
+  | Survanta => 400  (* 100 mg/kg × 4 kg *)
+  | Curosurf => 600  (* 200 mg/kg × 3 kg *)
+  | Infasurf => 420  (* 105 mg/kg × 4 kg *)
   end.
 
 (** Product- and weight-aware dose validity.
@@ -1212,14 +1223,16 @@ Definition prophylactic_recommendation (cs : ClinicalState) : Prop :=
   within_prophylactic_window (cs_minutes_since_birth cs) /\
   no_contraindications (cs_contraindications cs).
 
-(** Rescue pathway: FiO2 elevated, clinical signs, imaging evidence,
-    no contraindications. CPAP trial logic depends on current support.
-    Blood gas acidosis strengthens indication but is not required.
-    Imaging: CXR OR ultrasound OR clinical judgement per guidelines. *)
+(** Rescue pathway: FiO2 elevated, clinical signs, imaging/blood gas evidence.
+    NOTE: This is MORE CONSERVATIVE than European 2022 guideline, which states
+    FiO2 > 30% on CPAP ≥6 cmH2O is sufficient to trigger surfactant.
+    We additionally require: imaging OR blood gas OR clinical_judgement flag.
+    This design choice adds a confirmation gate beyond FiO2/CPAP thresholds.
+    For strict guideline-minimal logic, set clinical_judgement = true. *)
 Definition rescue_recommendation (cs : ClinicalState) : Prop :=
   fio2_elevated (current_fio2 (cs_patient cs)) /\
   clinical_rds (cs_signs cs) /\
-  (* Imaging OR blood gas supporting evidence required *)
+  (* Imaging OR blood gas OR clinical judgement required - conservative gate *)
   (imaging_supports_rds (cs_imaging cs) \/
    blood_gas_supports_surfactant (cs_blood_gas cs)) /\
   no_contraindications (cs_contraindications cs) /\
@@ -1231,6 +1244,70 @@ Definition rescue_recommendation (cs : ClinicalState) : Prop :=
             end
   | RoomAir => False  (* Must be on respiratory support for rescue *)
   end.
+
+(** Guideline-minimal rescue: literal European 2022 rule.
+    FiO2 > 30% on CPAP ≥6 (or already intubated) is sufficient.
+    No imaging/blood gas gate required. *)
+Definition rescue_guideline_minimal (cs : ClinicalState) : Prop :=
+  fio2_elevated (current_fio2 (cs_patient cs)) /\
+  clinical_rds (cs_signs cs) /\
+  no_contraindications (cs_contraindications cs) /\
+  match cs_current_support cs with
+  | Intubated => True
+  | CPAP => match cs_cpap_trial cs with
+            | None => False
+            | Some trial => cpap_trial_failed trial
+            end
+  | RoomAir => False
+  end.
+
+(** Our conservative rule implies the guideline rule.
+    If we recommend rescue, the guideline would too. *)
+Theorem conservative_implies_guideline :
+  forall cs, rescue_recommendation cs -> rescue_guideline_minimal cs.
+Proof.
+  intros cs [Hfio2 [Hsigns [_ [Hcontra Hsupport]]]].
+  unfold rescue_guideline_minimal.
+  auto.
+Qed.
+
+(** Witness: Case where guideline recommends but we don't.
+    FiO2 elevated, CPAP failed, but no imaging/blood gas evidence. *)
+Definition guideline_only_case : ClinicalState :=
+  mkClinicalState
+    (mkPatient 30 1200 12 50)          (* 30w, 1200g, 12h old, FiO2 50% *)
+    (mkRDSSigns true true false false) (* Grunting, retractions *)
+    clear_contraindications
+    (mkImagingEvidence None None false) (* No imaging, no clinical override *)
+    (mkBloodGas 7320 48 65)            (* Normal-ish gas, no acidosis *)
+    720                                 (* 12 hours *)
+    (Some failed_cpap_trial)
+    CPAP.
+
+(** Guideline recommends for this case. *)
+Lemma guideline_recommends_case : rescue_guideline_minimal guideline_only_case.
+Proof.
+  unfold rescue_guideline_minimal, guideline_only_case. simpl.
+  split. { unfold fio2_elevated, fio2_threshold. lia. }
+  split. { unfold clinical_rds, sign_count. simpl. lia. }
+  split. { exact clear_contraindications_ok. }
+  exact failed_cpap_trial_indicates_surfactant.
+Qed.
+
+(** We do NOT recommend for this case (no imaging/blood gas evidence). *)
+Lemma conservative_rejects_case : ~ rescue_recommendation guideline_only_case.
+Proof.
+  unfold rescue_recommendation, guideline_only_case. simpl.
+  intros [_ [_ [Hevidence _]]].
+  destruct Hevidence as [Himg | Hgas].
+  - unfold imaging_supports_rds in Himg. simpl in Himg.
+    destruct Himg as [H | [H | H]]; try contradiction; discriminate.
+  - unfold blood_gas_supports_surfactant, respiratory_acidosis,
+           ph_critical_low, pco2_critical_high in Hgas. simpl in Hgas.
+    destruct Hgas as [H | H].
+    + apply Nat.ltb_ge in H. discriminate.
+    + apply Nat.ltb_ge in H. discriminate.
+Qed.
 
 (** Unified recommendation: prophylactic OR rescue pathway. *)
 Definition surfactant_recommendation (cs : ClinicalState) : Prop :=
