@@ -79,6 +79,64 @@
    2.  Run recommend_surfactant_safe against historical decisions
    3.  Measure concordance rate with attending neonatologist decisions
    4.  Document false positives/negatives vs. clinician decisions
+
+   ALTERNATIVE VALIDATION METHOD (no IRB required):
+   Literature-based case extraction enables validation against published
+   clinical decisions without requiring direct hospital access or IRB approval.
+
+   Method:
+   (a) Identify peer-reviewed sources containing individual patient data:
+       - Randomized controlled trials (SUPPORT, COIN, Vermont-Oxford Network)
+       - European Consensus Guidelines case examples (Sweet et al. 2022)
+       - Case series in Journal of Perinatology, Neonatology, Pediatrics
+       - Cochrane systematic reviews with patient-level data tables
+
+   (b) Extract required clinical parameters from each published case:
+       - Gestational age (weeks + days)
+       - Birth weight (grams)
+       - Postnatal age at evaluation (hours)
+       - FiO2 requirement at decision point (percentage)
+       - Clinical signs present (grunting, retractions, flaring, cyanosis)
+       - Respiratory support mode (room air, CPAP, intubated)
+       - Contraindications if documented
+       - Actual surfactant decision made by clinicians
+
+   (c) Construct ClinicalState records from extracted parameters and run
+       recommend_surfactant_safe on each case.
+
+   (d) Compare model recommendation against actual clinical decision:
+       - True positive:  model=Indicated, clinician=gave surfactant
+       - True negative:  model=NotIndicated, clinician=withheld
+       - False positive: model=Indicated, clinician=withheld
+       - False negative: model=NotIndicated, clinician=gave surfactant
+
+   (e) Calculate concordance metrics:
+       - Overall agreement rate (TP + TN) / total
+       - Sensitivity: TP / (TP + FN)
+       - Specificity: TN / (TN + FP)
+       - Cohen's kappa for inter-rater reliability
+
+   (f) Analyze discordant cases to identify:
+       - Limitations of the model (missing clinical factors)
+       - Potential errors in published clinical decisions
+       - Edge cases requiring refinement of thresholds
+
+   Advantages of this method:
+   - Uses publicly available, peer-reviewed data
+   - No IRB approval, HIPAA compliance, or data use agreements required
+   - Cases represent real clinical decisions by expert neonatologists
+   - Reproducible: other researchers can verify using same sources
+   - Can achieve n >= 50 by combining multiple published sources
+
+   Limitations:
+   - Published cases may have selection bias (unusual cases more likely reported)
+   - Some parameters may be missing or reported at different timepoints
+   - Cannot capture nuances known to bedside clinician but not documented
+   - Historical cases may reflect outdated practices
+
+   This method satisfies TODO items 2-4 using literature as the source of
+   historical clinical decisions, enabling rigorous validation without
+   requiring institutional data access.
 *)
 
 From Coq Require Import Arith Lia List.
