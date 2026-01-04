@@ -79,35 +79,24 @@
        suggests 40% for >26w; Canadian guidelines [7] use 50%)
    2.  Add threshold configurations per gestational age strata
    3.  Prove threshold monotonicity (higher threshold → fewer indications)
-   4.  Replace hardcoded "< 210" with prophylactic_ga_threshold_days constant
-       (currently duplicated in prophylactic_indicated, prophylactic_rec_dec,
-       prophylactic_recommendation, prophylactic_recommendation_for)
-   5.  Add timed automata model for UPPAAL cross-validation
-   6.  Add temporal assertions: "surfactant within 2h of RDS onset"
-   7.  Model time-to-response assessment intervals
-   8.  Integrate SpO2/SF ratio into decision logic (currently excluded)
-   9.  Add OI-based escalation pathway
-   10. Add volume calculation: mg → mL (Curosurf 80, Survanta 25, Infasurf 35)
-   11. Add optional CPAP duration gate for local protocols
-   12. Consider lamellar body count as biomarker [5]
-   13. Fix integer truncation in dose calc (849g × 100mg/kg = 84mg, loses 0.9)
-   14. Add dose_in_mL extraction for nursing administration
-   15. Prove calculated dose never exceeds product vial size
-   16. Add OCaml unit test suite (currently 0 tests)
-   17. Test edge cases: weight 200g/6000g, GA 22+0/42+0
+   4.  Fix integer truncation in dose calc (849g × 100mg/kg = 84mg, loses 0.9)
+   5.  Add optional CPAP duration gate for local protocols
+   6.  Integrate SpO2/SF ratio into decision logic (currently excluded)
+   7.  Add OI-based escalation pathway
+   8.  Consider lamellar body count as biomarker [5]
+   9.  Add timed automata model for UPPAAL cross-validation
+   10. Add temporal assertions: "surfactant within 2h of RDS onset"
+   11. Model time-to-response assessment intervals
+   12. Export decision logic to Promela for SPIN model checking
+   13. Export to UPPAAL timed automata for temporal verification
+   14. Obtain anonymized NICU case records (n >= 50) for validation
+   15. Run recommend_surfactant_safe against historical decisions
+   16. Measure concordance rate with attending neonatologist decisions
+   17. Document false positives/negatives vs. clinician decisions
    18. Fuzz testing: random valid ClinicalState generation
-   19. Integration test: wrap in REST API
-   20. Fix extraction safety: validate_patient missing lower bounds for ga_days
-       (currently "<=? 6", should be "in_range 0 6" to reject negative ints)
-   21. Fix extraction safety: validate_patient missing age_hours check entirely
-   22. Fix extraction safety: validate_cpap_trial missing cpap_duration_minutes
-   23. Obtain anonymized NICU case records (n >= 50) for validation
-   24. Run recommend_surfactant_safe against historical decisions
-   25. Measure concordance rate with attending neonatologist decisions
-   26. Document false positives/negatives vs. clinician decisions
-   27. Export decision logic to Promela for SPIN model checking
-   28. Export to UPPAAL timed automata for temporal verification
-   29. Cross-validate: same test cases, same verdicts across tools
+   19. Add OCaml unit test suite
+   20. Cross-validate: same test cases, same verdicts across tools
+   21. Integration test: wrap in REST API
 *)
 
 From Coq Require Import Arith Lia.
@@ -184,6 +173,46 @@ Proof.
   intros [_ [H _]].
   assert (Hfalse: 50 <=? 42 = false) by reflexivity.
   apply Nat.leb_le in H. rewrite H in Hfalse. discriminate.
+Qed.
+
+(** --- Edge case: Minimum viable GA (22+0 weeks) --- *)
+Definition edge_min_ga_patient : Patient :=
+  mkPatient 22 0 400 1 30.
+
+Lemma edge_min_ga_valid : valid_patient edge_min_ga_patient.
+Proof.
+  unfold valid_patient, edge_min_ga_patient. simpl.
+  repeat split; apply Nat.leb_le; reflexivity.
+Qed.
+
+(** --- Edge case: Maximum GA (42+0 weeks) --- *)
+Definition edge_max_ga_patient : Patient :=
+  mkPatient 42 0 4000 1 21.
+
+Lemma edge_max_ga_valid : valid_patient edge_max_ga_patient.
+Proof.
+  unfold valid_patient, edge_max_ga_patient. simpl.
+  repeat split; apply Nat.leb_le; reflexivity.
+Qed.
+
+(** --- Edge case: Minimum weight (200g) --- *)
+Definition edge_min_weight_patient : Patient :=
+  mkPatient 24 0 200 1 40.
+
+Lemma edge_min_weight_valid : valid_patient edge_min_weight_patient.
+Proof.
+  unfold valid_patient, edge_min_weight_patient. simpl.
+  repeat split; apply Nat.leb_le; reflexivity.
+Qed.
+
+(** --- Edge case: Maximum weight (6000g) --- *)
+Definition edge_max_weight_patient : Patient :=
+  mkPatient 40 0 6000 1 21.
+
+Lemma edge_max_weight_valid : valid_patient edge_max_weight_patient.
+Proof.
+  unfold valid_patient, edge_max_weight_patient. simpl.
+  repeat split; apply Nat.leb_le; reflexivity.
 Qed.
 
 (** -------------------------------------------------------------------------- *)
@@ -882,10 +911,10 @@ Qed.
     For complete clinical decision-making, use surfactant_recommendation
     which integrates timing, contraindications, CXR, and CPAP context. *)
 
-(** Prophylactic indication (core): GA < 30+0 weeks (< 210 days).
-    Uses precise GA including days: 29+6 (209 days) qualifies, 30+0 (210) doesn't. *)
+(** Prophylactic indication (core): GA < 30+0 weeks.
+    Uses precise GA including days: 29+6 qualifies, 30+0 doesn't. *)
 Definition prophylactic_indicated (p : Patient) : Prop :=
-  ga_total_days p < 210.
+  ga_total_days p < prophylactic_ga_threshold_days.
 
 (** Rescue indication (core): FiO2 elevated AND clinical signs present.
     Full rescue recommendation also requires CXR consistency and CPAP context. *)
@@ -916,6 +945,7 @@ Definition well_signs : RDSSigns := mkRDSSigns false false false false.
 Lemma well_patient_not_indicated : ~ surfactant_indicated well_patient well_signs.
 Proof.
   unfold surfactant_indicated, prophylactic_indicated, ga_total_days,
+         prophylactic_ga_threshold_days, prophylactic_ga_threshold_weeks,
          rescue_indicated, fio2_elevated, fio2_threshold,
          well_patient. simpl. lia.
 Qed.
@@ -1004,6 +1034,90 @@ Proof. reflexivity. Qed.
 (** --- Witness: 800g infant, Curosurf repeat → 80mg --- *)
 Lemma curosurf_800g_repeat_dose : repeat_dose Curosurf 800 = 80.
 Proof. reflexivity. Qed.
+
+(** Product concentration in mg/mL for volume calculation.
+    - Curosurf: 80 mg/mL (1.5 mL and 3 mL vials)
+    - Survanta: 25 mg/mL (4 mL and 8 mL vials)
+    - Infasurf: 35 mg/mL (3 mL and 6 mL vials) *)
+Definition concentration_mg_per_ml (prod : SurfactantProduct) : nat :=
+  match prod with
+  | Survanta => 25
+  | Curosurf => 80
+  | Infasurf => 35
+  end.
+
+(** Maximum single vial size in mg.
+    - Survanta: 8 mL × 25 mg/mL = 200 mg
+    - Curosurf: 3 mL × 80 mg/mL = 240 mg
+    - Infasurf: 6 mL × 35 mg/mL = 210 mg *)
+Definition max_vial_mg (prod : SurfactantProduct) : nat :=
+  match prod with
+  | Survanta => 200
+  | Curosurf => 240
+  | Infasurf => 210
+  end.
+
+(** Calculate volume in mL (scaled by 10 for precision).
+    Returns dose_mg * 10 / concentration, so 160mg Curosurf → 20 (= 2.0 mL). *)
+Definition dose_volume_ml_x10 (prod : SurfactantProduct) (dose_mg : nat) : nat :=
+  dose_mg * 10 / concentration_mg_per_ml prod.
+
+(** --- Witness: 160mg Curosurf → 2.0 mL (returns 20) --- *)
+Lemma curosurf_160mg_volume : dose_volume_ml_x10 Curosurf 160 = 20.
+Proof. reflexivity. Qed.
+
+(** --- Witness: 100mg Survanta → 4.0 mL (returns 40) --- *)
+Lemma survanta_100mg_volume : dose_volume_ml_x10 Survanta 100 = 40.
+Proof. reflexivity. Qed.
+
+(** --- Witness: 105mg Infasurf → 3.0 mL (returns 30) --- *)
+Lemma infasurf_105mg_volume : dose_volume_ml_x10 Infasurf 105 = 30.
+Proof. reflexivity. Qed.
+
+(** Number of vials needed for a dose (ceiling division). *)
+Definition vials_needed (prod : SurfactantProduct) (dose_mg : nat) : nat :=
+  (dose_mg + max_vial_mg prod - 1) / max_vial_mg prod.
+
+(** Single vial sufficient for typical preterm weights.
+    For initial doses at max weight thresholds:
+    - Survanta 100 mg/kg: 2000g → 200mg = 1 vial
+    - Curosurf 200 mg/kg: 1200g → 240mg = 1 vial
+    - Infasurf 105 mg/kg: 2000g → 210mg = 1 vial *)
+Theorem single_vial_survanta :
+  forall weight, weight <= 2000 -> vials_needed Survanta (initial_dose Survanta weight) <= 1.
+Proof.
+  intros weight Hmax.
+  unfold vials_needed, initial_dose, calculate_dose, initial_dose_per_kg, max_vial_mg.
+  apply Nat.le_trans with ((2000 * 100 / 1000 + 200 - 1) / 200).
+  - apply Nat.Div0.div_le_mono.
+    assert (weight * 100 / 1000 <= 2000 * 100 / 1000) by (apply Nat.Div0.div_le_mono; lia).
+    lia.
+  - apply Nat.leb_le. reflexivity.
+Qed.
+
+Theorem single_vial_curosurf :
+  forall weight, weight <= 1200 -> vials_needed Curosurf (initial_dose Curosurf weight) <= 1.
+Proof.
+  intros weight Hmax.
+  unfold vials_needed, initial_dose, calculate_dose, initial_dose_per_kg, max_vial_mg.
+  apply Nat.le_trans with ((1200 * 200 / 1000 + 240 - 1) / 240).
+  - apply Nat.Div0.div_le_mono.
+    assert (weight * 200 / 1000 <= 1200 * 200 / 1000) by (apply Nat.Div0.div_le_mono; lia).
+    lia.
+  - apply Nat.leb_le. reflexivity.
+Qed.
+
+Theorem single_vial_infasurf :
+  forall weight, weight <= 2000 -> vials_needed Infasurf (initial_dose Infasurf weight) <= 1.
+Proof.
+  intros weight Hmax.
+  unfold vials_needed, initial_dose, calculate_dose, initial_dose_per_kg, max_vial_mg.
+  apply Nat.le_trans with ((2000 * 105 / 1000 + 210 - 1) / 210).
+  - apply Nat.Div0.div_le_mono.
+    assert (weight * 105 / 1000 <= 2000 * 105 / 1000) by (apply Nat.Div0.div_le_mono; lia).
+    lia.
+  - apply Nat.leb_le. reflexivity.
+Qed.
 
 (** Dose validity per FDA label: dose matches weight-based mg/kg specification.
     Primary validity check: dose equals expected value from weight calculation. *)
@@ -1433,13 +1547,13 @@ Record ClinicalState := mkClinicalState {
   cs_current_support : RespiratorySupport
 }.
 
-(** Prophylactic pathway: GA < 30+0w (< 210 days), intubated for stabilization,
+(** Prophylactic pathway: GA < 30+0w, intubated for stabilization,
     within timing window, no contraindications. Per European Consensus 2022.
     Uses conservative 15-minute window (strictest across all products).
     For product-specific timing (e.g., Infasurf allows 30 min), use
     prophylactic_recommendation_for. *)
 Definition prophylactic_recommendation (cs : ClinicalState) : Prop :=
-  ga_total_days (cs_patient cs) < 210 /\
+  ga_total_days (cs_patient cs) < prophylactic_ga_threshold_days /\
   cs_current_support cs = Intubated /\
   within_prophylactic_window (cs_minutes_since_birth cs) /\
   no_contraindications (cs_contraindications cs).
@@ -1448,7 +1562,7 @@ Definition prophylactic_recommendation (cs : ClinicalState) : Prop :=
     Infasurf allows up to 30 minutes; Survanta/Curosurf use 15 minutes. *)
 Definition prophylactic_recommendation_for (cs : ClinicalState)
                                            (prod : SurfactantProduct) : Prop :=
-  ga_total_days (cs_patient cs) < 210 /\
+  ga_total_days (cs_patient cs) < prophylactic_ga_threshold_days /\
   cs_current_support cs = Intubated /\
   within_prophylactic_window_for prod (cs_minutes_since_birth cs) /\
   no_contraindications (cs_contraindications cs).
@@ -1577,7 +1691,8 @@ Proof.
   unfold surfactant_recommendation, prophylactic_case. split.
   - unfold valid_patient. simpl.
     repeat split; apply Nat.leb_le; reflexivity.
-  - left. unfold prophylactic_recommendation, ga_total_days. simpl.
+  - left. unfold prophylactic_recommendation, ga_total_days,
+                 prophylactic_ga_threshold_days, prophylactic_ga_threshold_weeks. simpl.
     repeat split; try exact clear_contraindications_ok.
     + lia.
     + unfold within_prophylactic_window, prophylactic_window_minutes. lia.
@@ -1720,13 +1835,15 @@ Qed.
     term or near-term infants not in respiratory distress. *)
 Theorem well_infant_not_indicated :
   forall p signs,
-    ga_total_days p >= 210 ->
+    ga_total_days p >= prophylactic_ga_threshold_days ->
     current_fio2 p <= fio2_threshold ->
     ~ surfactant_indicated p signs.
 Proof.
   intros p signs Hga Hfio2.
+  unfold prophylactic_ga_threshold_days, prophylactic_ga_threshold_weeks in Hga.
   unfold surfactant_indicated. intros [Hpro | Hres].
-  - unfold prophylactic_indicated in Hpro. lia.
+  - unfold prophylactic_indicated, prophylactic_ga_threshold_days,
+           prophylactic_ga_threshold_weeks in Hpro. lia.
   - unfold rescue_indicated in Hres. destruct Hres as [Hfio2_elev _].
     unfold fio2_elevated in Hfio2_elev. lia.
 Qed.
@@ -1734,7 +1851,7 @@ Qed.
 (** Withholding from well infant does not miss indication. *)
 Theorem withhold_well_infant_safe :
   forall p signs c dose,
-    ga_total_days p >= 210 ->
+    ga_total_days p >= prophylactic_ga_threshold_days ->
     current_fio2 p <= fio2_threshold ->
     ~ safe_to_give p signs c dose.
 Proof.
@@ -1811,7 +1928,7 @@ Module SurfactantDecision.
 
   (** Decidable prophylactic indication using total days. *)
   Definition prophylactic_indicated_dec (p : Patient) : bool :=
-    ga_total_days p <? 210.
+    ga_total_days p <? prophylactic_ga_threshold_days.
 
   Lemma prophylactic_indicated_reflect : forall p,
     prophylactic_indicated_dec p = true <-> prophylactic_indicated p.
@@ -1838,6 +1955,15 @@ Module SurfactantDecision.
   (** Calculate repeat dose. *)
   Definition calc_repeat_dose (prod : SurfactantProduct) (wt : weight_g) : nat :=
     repeat_dose prod wt.
+
+  (** Calculate volume in mL × 10 for nursing administration.
+      Example: 20 = 2.0 mL. Caller divides by 10 for display. *)
+  Definition calc_volume_ml_x10 (prod : SurfactantProduct) (dose_mg : nat) : nat :=
+    dose_volume_ml_x10 prod dose_mg.
+
+  (** Calculate number of vials needed. *)
+  Definition calc_vials_needed (prod : SurfactantProduct) (dose_mg : nat) : nat :=
+    vials_needed prod dose_mg.
 
   (** Check CPAP failure. *)
   Definition cpap_failed_dec (pressure : nat) (fio2 : fio2_pct) : bool :=
@@ -2102,8 +2228,9 @@ Module SurfactantDecision.
   (** Validate Patient fields. *)
   Definition validate_patient (p : Patient) : bool :=
     in_range (ga_weeks p) 22 42 &&
-    (ga_days p <=? 6) &&
+    in_range (ga_days p) 0 6 &&
     in_range (birth_weight p) 200 6000 &&
+    in_range (age_hours p) 0 168 &&
     in_range (current_fio2 p) 21 100.
 
   (** Validate BloodGas fields (pH scaled, pCO2, pO2 all reasonable). *)
@@ -2115,6 +2242,7 @@ Module SurfactantDecision.
   (** Validate CPAPTrialState fields. *)
   Definition validate_cpap_trial (trial : CPAPTrialState) : bool :=
     in_range (cpap_pressure_cmh2o trial) 0 20 &&
+    in_range (cpap_duration_minutes trial) 0 10080 &&
     in_range (fio2_on_cpap trial) 21 100.
 
   (** Validate complete ClinicalState. *)
