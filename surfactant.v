@@ -134,6 +134,12 @@
 
 (**
    STATUS: EXERCISED
+
+   TODO:
+   1.  Machine-check SPIN refinement (the correspondence table above is just
+       documentation - a fancy comment. Real refinement requires proving in Coq
+       that every SPIN trace is simulated by the Coq semantics. Without this,
+       the "refinement mapping" is aspirational prose, not mathematics.)
 *)
 
 From Coq Require Import Arith Lia List.
