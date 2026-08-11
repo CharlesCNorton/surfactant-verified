@@ -19,8 +19,7 @@ proofs that those rules are consistent.
 | `surfactant_cli.ml` | Command-line decision interface |
 | `test_surfactant.ml` | Unit tests against the extraction |
 | `fuzz_surfactant.ml` | Randomized property tests |
-| `cross_validate.py` | Extraction against a Python reference implementation |
-| `validate_literature.py` | Extraction against published trial profiles |
+| `validate.py` | Extraction against a Python reference and against published trial profiles |
 | `literature_validation_cases.json` | Trial-derived case definitions |
 | `run_spin.py` | Promela preprocessor and verification driver |
 | `server.py`, `test_server.py` | HTTP decision service and its tests |
@@ -36,6 +35,8 @@ make coq      # compile surfactant.v and extract the OCaml decision module
 make ocaml    # build the CLI, unit tests, and fuzzer
 make test     # run the unit tests
 make fuzz     # run the randomized property tests
+make validate # run both validation case sets against the extraction
+make spin     # preprocess and run the SPIN model
 ```
 
 Requires Rocq 9.0 or later and an OCaml toolchain. `make` alone builds both

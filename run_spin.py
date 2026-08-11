@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Run SPIN verification on the surfactant model."""
+import shutil
 import subprocess
 import os
 import re
+import sys
 
 WORKDIR = os.path.dirname(os.path.abspath(__file__))
 PML_IN = os.path.join(WORKDIR, 'surfactant.pml')
 PML_OUT = os.path.join(WORKDIR, 'surfactant_pp.pml')
-SPIN = r'C:\Users\cnort\spin649.exe'
+SPIN = os.environ.get('SPIN') or shutil.which('spin') or shutil.which('spin649')
 
 def preprocess():
     """Manually preprocess Promela file."""
@@ -88,4 +90,7 @@ def run_spin():
     print("=" * 60)
 
 if __name__ == '__main__':
+    if SPIN is None:
+        print('spin not found; set SPIN or put it on PATH', file=sys.stderr)
+        sys.exit(1)
     run_spin()

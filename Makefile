@@ -4,7 +4,7 @@ OCAMLOPT ?= ocamlfind ocamlopt
 EXTRACTED := surfactant_decision.ml surfactant_decision.mli
 PROGRAMS  := surfactant_cli test_surfactant fuzz_surfactant
 
-.PHONY: all coq ocaml test fuzz clean
+.PHONY: all coq ocaml test fuzz validate spin clean
 
 all: coq ocaml
 
@@ -29,6 +29,12 @@ test: test_surfactant
 
 fuzz: fuzz_surfactant
 	./fuzz_surfactant
+
+validate: surfactant_cli
+	SURFACTANT_CLI=./surfactant_cli python validate.py all
+
+spin:
+	python run_spin.py
 
 clean:
 	rm -f *.vo *.vok *.vos *.glob .*.aux .lia.cache

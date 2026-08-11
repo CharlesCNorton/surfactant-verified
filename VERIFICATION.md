@@ -13,8 +13,7 @@ published trial profiles.
 | `surfactant.pml` | Promela model for SPIN |
 | `surfactant.xml` | Timed automata model for UPPAAL |
 | `run_spin.py` | Promela preprocessor and verification driver |
-| `cross_validate.py` | OCaml extraction against Python reference |
-| `validate_literature.py` | Extraction against published trial profiles |
+| `validate.py` | Extraction against a Python reference and against published trial profiles |
 | `literature_validation_cases.json` | Trial-derived case definitions |
 
 ## Timing Constants
@@ -272,7 +271,7 @@ Rounding is `(weight * dose_per_kg + 500) / 1000`.
 
 ## Literature Validation
 
-`validate_literature.py` runs the extraction against trial-derived profiles in
+`validate.py literature` runs the extraction against trial-derived profiles in
 `literature_validation_cases.json` and writes `VALIDATION_RESULTS.json`. The
 2026-01-04 run covered 15 cases with 15 concordant, 0 discordant, 0 errors.
 Cases include the SUPPORT trial prophylactic profile at 26 weeks intubated at
