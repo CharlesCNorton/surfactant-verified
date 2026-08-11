@@ -22,10 +22,11 @@ import sys
 from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CASES_PATH = os.path.join(SCRIPT_DIR, "literature_validation_cases.json")
-RESULTS_PATH = os.path.join(SCRIPT_DIR, "VALIDATION_RESULTS.json")
-PML_IN = os.path.join(SCRIPT_DIR, "surfactant.pml")
-PML_OUT = os.path.join(SCRIPT_DIR, "surfactant_pp.pml")
+ROOT = os.path.dirname(SCRIPT_DIR)
+CASES_PATH = os.path.join(ROOT, "data", "literature_validation_cases.json")
+RESULTS_PATH = os.path.join(ROOT, "VALIDATION_RESULTS.json")
+PML_IN = os.path.join(ROOT, "models", "surfactant.pml")
+PML_OUT = os.path.join(ROOT, "models", "surfactant_pp.pml")
 
 GA_PROPHYLACTIC_MAX_DAYS = 210
 FIO2_RESCUE_THRESHOLD = 30
@@ -112,7 +113,7 @@ def find_cli():
     if env:
         return env
     for name in ("surfactant_cli", "surfactant_cli.exe"):
-        path = os.path.join(SCRIPT_DIR, name)
+        path = os.path.join(ROOT, "bin", name)
         if os.path.exists(path):
             return path
     return None

@@ -24,10 +24,9 @@ from urllib.parse import urlparse, parse_qs
 import argparse
 from datetime import datetime
 
-# Path to the compiled OCaml CLI
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CLI_PATH = os.path.join(SCRIPT_DIR, "surfactant_cli.exe")
-OCAMLRUN = "ocamlrun"  # Assumes ocamlrun is in PATH via opam
+sys.path.insert(0, SCRIPT_DIR)
+from validate import find_cli
 
 # Audit log
 AUDIT_LOG = []
@@ -47,9 +46,12 @@ def log_request(endpoint, request_data, response_data):
 
 def call_ocaml_cli(input_json):
     """Call the OCaml CLI with JSON input and return JSON output."""
+    cli = find_cli()
+    if cli is None:
+        return {"error": "decision binary not found; run `make ocaml`"}
     try:
         result = subprocess.run(
-            [OCAMLRUN, CLI_PATH],
+            [cli],
             input=json.dumps(input_json),
             capture_output=True,
             text=True,
@@ -238,11 +240,11 @@ class SurfactantHandler(BaseHTTPRequestHandler):
             self.send_html(API_DOC)
 
         elif path == "/health":
-            cli_exists = os.path.exists(CLI_PATH)
+            cli = find_cli()
             self.send_json({
                 "status": "ok",
-                "cli_available": cli_exists,
-                "cli_path": CLI_PATH
+                "cli_available": cli is not None,
+                "cli_path": cli
             })
 
         elif path == "/audit":

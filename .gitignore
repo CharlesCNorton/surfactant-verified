@@ -37,11 +37,14 @@ __pycache__/
 surfactant-verified/
 
 # Coq extraction output (regenerate with `make coq`)
-surfactant_decision.ml
-surfactant_decision.mli
+ocaml/surfactant_decision.ml
+ocaml/surfactant_decision.mli
+
+# Build output
+bin/
 
 # SPIN artifacts
-surfactant_pp.pml
+models/surfactant_pp.pml
 pan
 pan.c
 pan.[bhmpt]

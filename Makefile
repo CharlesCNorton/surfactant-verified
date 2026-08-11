@@ -1,43 +1,47 @@
 ROCQ ?= rocq
 OCAMLOPT ?= ocamlfind ocamlopt
 
-EXTRACTED := surfactant_decision.ml surfactant_decision.mli
+COQ_SRC   := coq/surfactant.v
+EXTRACTED := ocaml/surfactant_decision.ml ocaml/surfactant_decision.mli
 PROGRAMS  := surfactant_cli test_surfactant fuzz_surfactant
+BINARIES  := $(addprefix bin/,$(PROGRAMS))
 
-.PHONY: all coq ocaml test fuzz validate spin clean
+.PHONY: all coq ocaml test fuzz validate spin serve clean
 
 all: coq ocaml
 
-coq: surfactant.vo
+coq: coq/surfactant.vo
 
-surfactant.vo $(EXTRACTED): surfactant.v
-	$(ROCQ) compile surfactant.v
+coq/surfactant.vo $(EXTRACTED): $(COQ_SRC)
+	$(ROCQ) compile -output-directory ocaml $(COQ_SRC)
 
-ocaml: $(PROGRAMS)
+ocaml: $(BINARIES)
 
-surfactant_cli: $(EXTRACTED) surfactant_cli.ml
-	$(OCAMLOPT) -o $@ surfactant_decision.mli surfactant_decision.ml surfactant_cli.ml
+bin:
+	mkdir -p bin
 
-test_surfactant: $(EXTRACTED) test_surfactant.ml
-	$(OCAMLOPT) -o $@ surfactant_decision.mli surfactant_decision.ml test_surfactant.ml
+bin/%: $(EXTRACTED) ocaml/%.ml | bin
+	$(OCAMLOPT) -I ocaml -o $@ \
+	  ocaml/surfactant_decision.mli ocaml/surfactant_decision.ml ocaml/$*.ml
 
-fuzz_surfactant: $(EXTRACTED) fuzz_surfactant.ml
-	$(OCAMLOPT) -o $@ surfactant_decision.mli surfactant_decision.ml fuzz_surfactant.ml
+test: bin/test_surfactant
+	./bin/test_surfactant
 
-test: test_surfactant
-	./test_surfactant
+fuzz: bin/fuzz_surfactant
+	./bin/fuzz_surfactant
 
-fuzz: fuzz_surfactant
-	./fuzz_surfactant
-
-validate: surfactant_cli
-	SURFACTANT_CLI=./surfactant_cli python validate.py all
+validate: bin/surfactant_cli
+	python tools/validate.py all
 
 spin:
-	python validate.py spin
+	python tools/validate.py spin
+
+serve: bin/surfactant_cli
+	python tools/server.py
 
 clean:
-	rm -f *.vo *.vok *.vos *.glob .*.aux .lia.cache
-	rm -f $(EXTRACTED) surfactant_pp.pml
-	rm -f *.cmi *.cmx *.o $(PROGRAMS) $(addsuffix .exe,$(PROGRAMS))
+	rm -f coq/*.vo coq/*.vok coq/*.vos coq/*.glob coq/.*.aux coq/.lia.cache
+	rm -f $(EXTRACTED) models/surfactant_pp.pml VALIDATION_RESULTS.json
+	rm -f ocaml/*.cmi ocaml/*.cmx ocaml/*.o
+	rm -rf bin
 	rm -f pan pan.c pan.[bhmpt]
