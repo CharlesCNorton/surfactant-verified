@@ -35,3 +35,16 @@ __pycache__/
 
 # Nested repo copy
 surfactant-verified/
+
+# Coq extraction output (regenerate with `make coq`)
+surfactant_decision.ml
+surfactant_decision.mli
+
+# SPIN artifacts
+surfactant_pp.pml
+pan
+pan.c
+pan.[bhmpt]
+
+# Run outputs
+VALIDATION_RESULTS.json
