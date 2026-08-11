@@ -34,7 +34,7 @@ validate: surfactant_cli
 	SURFACTANT_CLI=./surfactant_cli python validate.py all
 
 spin:
-	python run_spin.py
+	python validate.py spin
 
 clean:
 	rm -f *.vo *.vok *.vos *.glob .*.aux .lia.cache

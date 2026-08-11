@@ -6,14 +6,17 @@ Two case sources:
               implementation of the same rules.
   literature  Cases derived from published thresholds, loaded from
               literature_validation_cases.json.
+  spin        Preprocess the Promela model and run SPIN over it.
 
 The decision binary is located via SURFACTANT_CLI, or as surfactant_cli next to
-this script. Build it with `make ocaml`.
+this script; build it with `make ocaml`. SPIN is located via SPIN or PATH.
 """
 
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -21,6 +24,8 @@ from datetime import datetime
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CASES_PATH = os.path.join(SCRIPT_DIR, "literature_validation_cases.json")
 RESULTS_PATH = os.path.join(SCRIPT_DIR, "VALIDATION_RESULTS.json")
+PML_IN = os.path.join(SCRIPT_DIR, "surfactant.pml")
+PML_OUT = os.path.join(SCRIPT_DIR, "surfactant_pp.pml")
 
 GA_PROPHYLACTIC_MAX_DAYS = 210
 FIO2_RESCUE_THRESHOLD = 30
@@ -246,13 +251,78 @@ def run_literature(cli):
     return rows, failures
 
 
+def preprocess_promela():
+    """Expand #define macros in the Promela model, returning the macro count."""
+    with open(PML_IN) as handle:
+        content = handle.read()
+    content = re.sub(r"\\\n", " ", content)
+
+    defines = {}
+    lines = []
+    for line in content.split("\n"):
+        match = re.match(r"#define\s+(\w+)\s+(.+)", line)
+        if match:
+            defines[match.group(1)] = match.group(2).split("/*")[0].strip()
+        else:
+            lines.append(line)
+    content = "\n".join(lines)
+
+    for name in sorted(defines, key=len, reverse=True):
+        content = re.sub(r"\b" + re.escape(name) + r"\b", defines[name], content)
+
+    with open(PML_OUT, "w") as handle:
+        handle.write(content)
+    return len(defines)
+
+
+def run_spin():
+    """Preprocess the Promela model and run SPIN over it."""
+    spin = os.environ.get("SPIN") or shutil.which("spin") or shutil.which("spin649")
+    if spin is None:
+        print("spin not found; set SPIN or put it on PATH", file=sys.stderr)
+        return 1
+
+    print("=" * 70)
+    print("SPIN")
+    print("=" * 70)
+    print("expanded %d macros into %s" % (preprocess_promela(), PML_OUT))
+
+    proc = subprocess.run([spin, "-n", "-a", PML_OUT],
+                          capture_output=True, text=True, cwd=SCRIPT_DIR)
+    print("verifier generation returned %d" % proc.returncode)
+    for line in proc.stderr.strip().split("\n")[:10]:
+        if line:
+            print("  %s" % line)
+
+    generated = [name for name in ("pan.c", "pan.h", "pan.m", "pan.t", "pan.b")
+                 if os.path.exists(os.path.join(SCRIPT_DIR, name))]
+    print("generated: %s" % (", ".join(generated) or "nothing"))
+
+    proc = subprocess.run([spin, "-n", "-p", "-u300", PML_OUT],
+                          capture_output=True, text=True, cwd=SCRIPT_DIR)
+    if proc.stdout:
+        lines = proc.stdout.strip().split("\n")
+        print("simulation produced %d lines, last 20:" % len(lines))
+        for line in lines[-20:]:
+            print("    %s" % line)
+    if proc.stderr.strip():
+        print("stderr: %s" % proc.stderr.strip()[:300])
+
+    print("full LTL verification requires gcc to compile pan.c")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("mode", nargs="?", default="all",
-                        choices=["cross", "literature", "all"],
-                        help="which case source to run (default: all)")
+                        choices=["cross", "literature", "spin", "all"],
+                        help="what to run; all means cross plus literature "
+                             "(default: all)")
     args = parser.parse_args()
+
+    if args.mode == "spin":
+        return run_spin()
 
     cli = find_cli()
     if cli is None:
